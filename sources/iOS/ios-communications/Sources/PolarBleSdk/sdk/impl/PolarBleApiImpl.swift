@@ -176,7 +176,7 @@ import UIKit
         throw PolarErrors.notificationNotEnabled
     }
     
-    private func sessionFtpClientReady(_ identifier: String) throws -> BleDeviceSession {
+    internal func sessionFtpClientReady(_ identifier: String) throws -> BleDeviceSession {
         let session = try sessionServiceReady(identifier, service: BlePsFtpClient.PSFTP_SERVICE)
         let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as! BlePsFtpClient
         if client.isCharacteristicNotificationEnabled(BlePsFtpClient.PSFTP_MTU_CHARACTERISTIC) {
@@ -589,8 +589,12 @@ import UIKit
                                     if value.contains(PmdMeasurementType.pressure) {
                                         featureSet.insert(.pressure)
                                     }
-                                    self.deviceFeaturesObserver?.streamingFeaturesReady(deviceId, streamingFeatures: featureSet)
+                                    if value.contains(PmdMeasurementType.skinTemperature) {
+                                        featureSet.insert(.skinTemperature)
+                                    }
                                     
+                                    self.deviceFeaturesObserver?.streamingFeaturesReady(deviceId, streamingFeatures: featureSet)
+
                                     if value.contains(PmdMeasurementType.sdkMode) {
                                         self.sdkModeFeatureObserver?.sdkModeFeatureAvailable(deviceId)
                                     }
@@ -640,7 +644,6 @@ extension PolarBleApiImpl: BleLoggerProtocol {
 }
 
 extension PolarBleApiImpl: PolarBleApi  {
-    
     
     func cleanup() {
         _ = listener.removeAllSessions(
@@ -1057,6 +1060,8 @@ extension PolarBleApiImpl: PolarBleApi  {
             return querySettings(identifier, type: .gyro, recordingType: PmdRecordingType.online)
         case .temperature:
             return querySettings(identifier, type: .temperature, recordingType: PmdRecordingType.online)
+        case .skinTemperature:
+            return querySettings(identifier, type: .skinTemperature, recordingType: PmdRecordingType.online)
         case .pressure:
             return querySettings(identifier, type: .pressure, recordingType: PmdRecordingType.online)
         case .ppi, .hr:
@@ -1078,7 +1083,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return queryFullSettings(identifier, type: .mgn, recordingType: PmdRecordingType.online)
         case .gyro:
             return queryFullSettings(identifier, type: .gyro, recordingType: PmdRecordingType.online)
-        case .ppi, .hr, .temperature, .pressure:
+        case .ppi, .hr, .temperature, .pressure, .skinTemperature:
             return Single.error(PolarErrors.operationNotSupported)
         }
     }
@@ -1101,6 +1106,8 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(PolarErrors.operationNotSupported)
         case .temperature:
             return querySettings(identifier, type: .temperature, recordingType: PmdRecordingType.offline)
+        case .skinTemperature:
+            return querySettings(identifier, type: .skinTemperature, recordingType: PmdRecordingType.offline)
         case .pressure:
             return querySettings(identifier, type: .pressure, recordingType: PmdRecordingType.offline)
         }
@@ -1124,6 +1131,8 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(PolarErrors.operationNotSupported)
         case .temperature:
             return queryFullSettings(identifier, type: .temperature, recordingType: PmdRecordingType.offline)
+        case .skinTemperature:
+            return queryFullSettings(identifier, type: .skinTemperature, recordingType: PmdRecordingType.offline)
         }
     }
     
@@ -1157,6 +1166,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                     if (pmdFeature.contains(PmdMeasurementType.temperature)) {
                         deviceData.insert(PolarDeviceDataType.temperature)
+                    }
+                    if (pmdFeature.contains(PmdMeasurementType.skinTemperature)) {
+                        deviceData.insert(PolarDeviceDataType.skinTemperature)
                     }
                     return deviceData
                 }
@@ -1304,6 +1316,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                   var polarPpiData: PolarOfflineRecordingData?
                   var polarHrData: PolarOfflineRecordingData?
                   var polarTemperatureData: PolarOfflineRecordingData?
+                  var polarSkinTemperatureData: PolarOfflineRecordingData?
 
                   let lastTimestamp: UInt64 = 0
 
@@ -1373,6 +1386,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                       observer.onNext(polarHrData!)
                                                   case let temperatureData as TemperatureData:
                                                       polarTemperatureData = self.processTemperatureData(temperatureData, polarTemperatureData, offlineRecordingData)
+                                                      observer.onNext(polarTemperatureData!)
+                                                  case let skinTemperatureData as SkinTemperatureData:
+                                                      polarSkinTemperatureData = self.processSkinTemperatureData(skinTemperatureData, polarSkinTemperatureData, offlineRecordingData)
                                                       observer.onNext(polarTemperatureData!)
                                                   default:
                                                       observer.onError(PolarErrors.polarOfflineRecordingError(description: "GetOfflineRecording failed. Data type is not supported."))
@@ -1818,6 +1834,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     if (pmdFeature.contains(PmdMeasurementType.pressure)) {
                         deviceData.insert(PolarDeviceDataType.pressure)
                     }
+                    if (pmdFeature.contains(PmdMeasurementType.skinTemperature)) {
+                        deviceData.insert(PolarDeviceDataType.skinTemperature)
+                    }
                     return deviceData
                 }
         } catch let err {
@@ -1904,7 +1923,8 @@ extension PolarBleApiImpl: PolarBleApi  {
             }
             return bleHrClient.observeHrNotifications(true)
                 .map {
-                    return [(hr: UInt8($0.hr), rrsMs: $0.rrsMs, rrAvailable: $0.rrPresent, contactStatus: $0.sensorContact, contactStatusSupported: $0.sensorContactSupported)]
+                    // Online HR streaming does not provide corrected HR. Thus, ppgQuality and correctedHr are set to zero.
+                    return [(hr: UInt8($0.hr), 0, 0, rrsMs: $0.rrsMs, rrAvailable: $0.rrPresent, contactStatus: $0.sensorContact, contactStatusSupported: $0.sensorContactSupported)]
                 }
         } catch let err {
             return Observable.error(err)
@@ -1923,6 +1943,15 @@ extension PolarBleApiImpl: PolarBleApi  {
     func startPressureStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarPressureData> {
         return startStreaming(identifier, type: .pressure, settings: settings) { (client) -> Observable<PolarPressureData> in
             return client.observePressure()
+                .map {
+                    $0.mapToPolarData()
+                }
+        }
+    }
+    
+    func startSkinTemperatureStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarTemperatureData> {
+        return startStreaming(identifier, type: .skinTemperature, settings: settings) { (client) -> Observable<PolarTemperatureData> in
+            return client.observeSkinTemperature()
                 .map {
                     $0.mapToPolarData()
                 }
@@ -2720,53 +2749,6 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    func getSleepData(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarSleepData.PolarSleepAnalysisResult]> {
-        do {
-            let session = try self.sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                return Single.error(PolarErrors.serviceNotFound)
-            }
-
-            var sleepDataList = [PolarSleepData.PolarSleepAnalysisResult]()
-            let calendar = Calendar.current
-            var datesList = [Date]()
-            var currentDate = fromDate
-
-            while currentDate <= toDate {
-                datesList.append(currentDate)
-                if let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) {
-                    currentDate = nextDate
-                } else {
-                    break
-                }
-            }
-
-            return Observable.from(datesList)
-                .flatMap { date -> Single<(PolarSleepData.PolarSleepAnalysisResult)> in
-                    return PolarSleepUtils.readSleepFromDayDirectory(client: client, date: date)
-                        .map { sleepData -> (PolarSleepData.PolarSleepAnalysisResult) in
-                            return sleepData
-                        }
-                }
-                .toArray()
-                .map { sleepAnalysisResult -> [PolarSleepData.PolarSleepAnalysisResult] in
-                    // Create an unwrapped copy of sleepDataList to allow removal of nil PolarSleepAnalysisResults from the list.
-                    var sleepDataList = [PolarSleepData.PolarSleepAnalysisResult]()
-                    sleepDataList.append(contentsOf: sleepAnalysisResult)
-                    for sleepData in sleepDataList {
-                        if (sleepData.sleepStartTime == nil) {
-                            if let index = sleepDataList.firstIndex(where: { $0.lastModified == sleepData.lastModified }) {
-                                sleepDataList.remove(at: index)
-                            }
-                        }
-                    }
-                    return sleepDataList
-                }
-        } catch {
-            return Single.error(error)
-        }
-    }
-    
     func get247HrSamples(identifier: String, fromDate: Date, toDate: Date) -> Single<[Polar247HrSamplesData]> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
@@ -2810,6 +2792,42 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .toArray()
                 .flatMap { _ in
                     Single.just(nightlyRechargeDataList)
+                }
+        } catch {
+            return Single.error(error)
+        }
+    }
+
+    func getSkinTemperature(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarSkinTemperatureData.PolarSkinTemperatureResult]> {
+        do {
+            let session = try self.sessionFtpClientReady(identifier)
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Single.error(PolarErrors.serviceNotFound)
+            }
+
+            var skinTemperatureDataList = [PolarSkinTemperatureData.PolarSkinTemperatureResult]()
+
+            let calendar = Calendar.current
+            var currentDate = fromDate
+
+            var datesList = [Date]()
+
+            while currentDate <= toDate {
+                datesList.append(currentDate)
+                currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate)!
+            }
+
+            return Observable.from(datesList)
+                .flatMap { date in
+                    PolarSkinTemperatureUtils.readSkinTemperatureData(client: client, date: date)
+                        .asObservable()
+                        .do(onNext: { skinTemp in
+                            skinTemperatureDataList.append(skinTemp)
+                        })
+                }
+                .toArray()
+                .flatMap { _ in
+                    Single.just(skinTemperatureDataList)
                 }
         } catch {
             return Single.error(error)
@@ -2953,6 +2971,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(error)
         }
     }
+
 
     func deleteStoredDeviceData(_ identifier: String, dataType: PolarStoredDataType.StoredDataType, until: Date?) -> Completable {
         
@@ -3520,7 +3539,7 @@ extension PolarBleApiImpl: PolarBleApi  {
     ) -> PolarOfflineRecordingData {
         switch existingData {
         case let .ppgOfflineRecordingData(existingData, startTime, existingSettings):
-            let newSamples = existingData.samples + ppgData.samples.map { (timeStamp: $0.timeStamp, channelSamples: $0.ppgDataSamples) }
+            let newSamples = existingData.samples + ppgData.samples.map { (timeStamp: $0.timeStamp!, channelSamples: $0.ppgDataSamples) }
             return .ppgOfflineRecordingData(
                 (samples: newSamples, type: existingData.type),
                 startTime: startTime,
@@ -3583,6 +3602,8 @@ extension PolarBleApiImpl: PolarBleApi  {
             let newSamples = existingData + hrData.samples.map {
                 (
                     hr: $0.hr,
+                    ppgQuality: $0.ppgQuality,
+                    correctedHr: $0.correctedHr,
                     rrsMs: [],
                     rrAvailable: false,
                     contactStatus: false,
@@ -3598,6 +3619,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 hrData.samples.map {
                     (
                         hr: $0.hr,
+                        ppgQuality: $0.ppgQuality,
+                        correctedHr: $0.correctedHr,
                         rrsMs: [],
                         rrAvailable: false,
                         contactStatus: false,
@@ -3637,6 +3660,36 @@ extension PolarBleApiImpl: PolarBleApi  {
             )
         }
     }
+    
+    private func processSkinTemperatureData(
+        _ skinTemperatureData: SkinTemperatureData,
+        _ existingData: PolarOfflineRecordingData?,
+        _ offlineRecordingData: OfflineRecordingData<Any>
+    ) -> PolarOfflineRecordingData {
+        switch existingData {
+        case let .skinTemperatureOfflineRecordingData(existingData, startTime):
+            let newSamples = existingData.samples + skinTemperatureData.samples.map {
+                (
+                    timeStamp: $0.timeStamp,
+                    temperature: $0.skinTemperature
+                )
+            }
+            let updatedData: PolarTemperatureData = (
+                timeStamp: newSamples.last?.timeStamp ?? existingData.timeStamp,
+                samples: newSamples
+            )
+            return .temperatureOfflineRecordingData(
+                updatedData,
+                startTime: startTime
+            )
+        default:
+            return .temperatureOfflineRecordingData(
+                skinTemperatureData.mapToPolarData(),
+                startTime: offlineRecordingData.startTime
+            )
+        }
+    }
+
 
     private func querySettings(_ identifier: String, type: PmdMeasurementType, recordingType: PmdRecordingType) -> Single<PolarSensorSetting> {
         do {
@@ -3833,9 +3886,10 @@ private extension PpiData {
 
 private extension OfflineHrData {
     func mapToPolarData() -> PolarHrData {
-        var polarSamples: [(hr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)] = []
+        var polarSamples: [(hr: UInt8, ppgQuality: UInt8, correctedHr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)] = []
         for sample in self.samples {
-            polarSamples.append((hr: sample.hr, rrsMs:[], rrAvailable: false, contactStatus: false, contactStatusSupported: false))
+            let data = [(hr: sample.hr, ppgQuality: sample.ppgQuality, correctedHr: sample.correctedHr, rrsMs: [], rrAvailable: false, contactStatus: false, contactStatusSupported: false)]
+            polarSamples.append((hr: sample.hr, ppgQuality: sample.ppgQuality, correctedHr: sample.correctedHr, rrsMs: [], rrAvailable: false, contactStatus: false, contactStatusSupported: false))
         }
         return polarSamples
     }
@@ -3855,22 +3909,33 @@ private extension PpgData {
     func mapToPolarOhrData() -> PolarOhrData {
         var polarSamples: [(timeStamp:UInt64, channelSamples: [Int32])] = []
         for sample in self.samples {
-            polarSamples.append((timeStamp: sample.timeStamp, channelSamples: [sample.ppgDataSamples[0], sample.ppgDataSamples[1], sample.ppgDataSamples[2], sample.ambientSample ] ))
+            polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: [sample.ppgDataSamples[0], sample.ppgDataSamples[1], sample.ppgDataSamples[2], sample.ambientSample ] ))
         }
         return PolarOhrData(timeStamp: self.timeStamp, type: OhrDataType.ppg3_ambient1, samples: polarSamples)
     }
-    
+
     func mapToPolarData() -> PolarPpgData {
         var polarSamples: [(timeStamp:UInt64, channelSamples: [Int32])] = []
         var dataType: PpgDataType!
 
         for sample in self.samples {
-            if (sample.ppgDataSamples.count == 3) {
-                polarSamples.append((timeStamp: sample.timeStamp, channelSamples: [sample.ppgDataSamples[0], sample.ppgDataSamples[1], sample.ppgDataSamples[2], sample.ambientSample ] ))
+            if (sample.frameType == PmdDataFrameType.type_0) {
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: [sample.ppgDataSamples[0], sample.ppgDataSamples[1], sample.ppgDataSamples[2], sample.ambientSample ] ))
                 dataType = PpgDataType.ppg3_ambient1
-            } else if (sample.ppgDataSamples.count == 17) {
-                polarSamples.append((timeStamp: sample.timeStamp, channelSamples: sample.ppgDataSamples))
+            }  else if (sample.frameType == PmdDataFrameType.type_6) {
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: sample.ppgDataSamples))
+                dataType = PpgDataType.ppg1
+            } else if (sample.frameType == PmdDataFrameType.type_7) {
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: sample.ppgDataSamples))
                 dataType = PpgDataType.ppg17
+            } else if (sample.frameType == PmdDataFrameType.type_10) {
+                var samples = sample.ppgDataSamples
+                samples.append(sample.status)
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: samples))
+                dataType = PpgDataType.ppg21
+            } else if (sample.frameType == PmdDataFrameType.type_9) {
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: sample.ppgDataSamples))
+                dataType = PpgDataType.ppg3
             }
         }
         return PolarPpgData(type: dataType, samples: polarSamples)
@@ -3894,6 +3959,16 @@ private extension PressureData {
             polarSamples.append((timeStamp: sample.timeStamp, pressure: sample.pressure ))
         }
         return PolarPressureData(timeStamp: samples[0].timeStamp, samples: polarSamples)
+    }
+}
+
+private extension SkinTemperatureData {
+    func mapToPolarData() -> PolarTemperatureData {
+        var polarSamples: [(timeStamp: UInt64, temperature: Float)] = []
+        for sample in self.samples {
+            polarSamples.append((timeStamp: sample.timeStamp, temperature: sample.skinTemperature ))
+        }
+        return PolarTemperatureData(timeStamp: samples[0].timeStamp, samples: polarSamples)
     }
 }
 

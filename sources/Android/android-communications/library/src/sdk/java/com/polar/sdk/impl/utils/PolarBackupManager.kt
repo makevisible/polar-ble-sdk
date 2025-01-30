@@ -49,7 +49,6 @@ class PolarBackupManager(private val client: BlePsFtpClient) {
 
         return Single.fromCallable {
             BleLogger.d(TAG, "Requesting backup content")
-            
             val builder = PftpRequest.PbPFtpOperation.newBuilder()
             builder.command = PftpRequest.PbPFtpOperation.Command.GET
             builder.path = ARABICA_SYS_FOLDER

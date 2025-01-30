@@ -15,6 +15,7 @@ public enum PolarDeviceDataType: CaseIterable {
     case hr
     case temperature
     case pressure
+    case skinTemperature
 }
 
 /// Features available in Polar BLE SDK library
@@ -62,6 +63,7 @@ public enum PolarActivityDataType: String, CaseIterable {
     case CALORIES
     case HR_SAMPLES
     case NIGHTLY_RECHARGE
+    case SKIN_TEMPERATURE
     case NONE
    }
 
@@ -82,11 +84,13 @@ public typealias PolarHrBroadcastData = (deviceInfo: PolarDeviceInfo, hr: UInt8,
 /// Polar hr data
 ///
 ///     - hr in BPM
+///     - ppgQuality PPG signal quality of the real time HR between 0 and 100
+///     - correctedHr Corrected value of the real time HR value. 0 if unavailable.
 ///     - rrsMs RR interval in ms. R is a the top highest peak in the QRS complex of the ECG wave and RR is the interval between successive Rs.
 ///     - contactStatus true if the sensor has contact (with a measurable surface e.g. skin)
 ///     - contactStatusSupported true if the sensor supports contact status
 ///     - rrAvailable true if RR data is available.
-public typealias PolarHrData = [(hr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)]
+public typealias PolarHrData = [(hr: UInt8, ppgQuality: UInt8, correctedHr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)]
 
 /// Polar Ecg data
 ///
@@ -164,10 +168,16 @@ public typealias PolarOhrData = (timeStamp: UInt64, type: OhrDataType, samples: 
 
 /// PPG data source enum
 public enum PpgDataType: Int, CaseIterable {
+    // 1 ppg, sport id (frame type 6)
+    case ppg1 = 1
     /// 3 ppg + 1 ambient
     case ppg3_ambient1 = 4
+    /// 3 ppg (NUMINT_TSx, TIA_GAIN_CH1_TSx, TIA_GAIN_CH2_TSx)
+    case ppg3 = 7
     /// 16 ppg + 1 status
     case ppg17 = 5
+    ///  8 green + 6 red + 6 ir channels + 1 status channel
+    case ppg21 = 6
     case unknown = 18
 }
 

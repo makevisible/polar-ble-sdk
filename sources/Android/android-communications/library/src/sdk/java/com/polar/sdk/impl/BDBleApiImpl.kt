@@ -65,6 +65,7 @@ import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientAccDataToPolarAcc
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientFeatureToPolarFeature
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientGyroDataToPolarGyro
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientMagDataToPolarMagnetometer
+import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientSkinTemperatureDataToPolarTemperatureData
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdClientTemperatureDataToPolarTemperature
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdSettingsToPolarSettings
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPmdTriggerToPolarTrigger
@@ -74,6 +75,7 @@ import com.polar.sdk.impl.utils.PolarDataUtils.mapPolarSecretToPmdSecret
 import com.polar.sdk.impl.utils.PolarDataUtils.mapPolarSettingsToPmdSettings
 import com.polar.sdk.impl.utils.PolarFirmwareUpdateUtils
 import com.polar.sdk.impl.utils.PolarNightlyRechargeUtils
+import com.polar.sdk.impl.utils.PolarSkinTemperatureUtils
 import com.polar.sdk.impl.utils.PolarSleepUtils
 import com.polar.sdk.impl.utils.PolarTimeUtils
 import com.polar.sdk.impl.utils.PolarTimeUtils.javaCalendarToPbPftpSetLocalTime
@@ -158,6 +160,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 PolarBleSdkFeature.FEATURE_POLAR_FIRMWARE_UPDATE -> clients.add(BlePsFtpClient::class.java)
                 PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA -> clients.add(BlePsFtpClient::class.java)
                 PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA -> clients.add(BlePsFtpClient::class.java)
+                PolarBleSdkFeature.FEATURE_POLAR_TEMPERATURE_DATA -> clients.add(BlePsFtpClient::class.java)
             }
         }
 
@@ -304,6 +307,10 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     sessionPsFtpClientReady(deviceId)
                     true
                 }
+                PolarBleSdkFeature.FEATURE_POLAR_TEMPERATURE_DATA -> {
+                    sessionPsFtpClientReady(deviceId)
+                    true
+                }
             }
         } catch (ignored: Throwable) {
             false
@@ -379,6 +386,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             PolarDeviceDataType.PPG -> querySettings(identifier, PmdMeasurementType.PPG, PmdRecordingType.ONLINE)
             PolarDeviceDataType.GYRO -> querySettings(identifier, PmdMeasurementType.GYRO, PmdRecordingType.ONLINE)
             PolarDeviceDataType.MAGNETOMETER -> querySettings(identifier, PmdMeasurementType.MAGNETOMETER, PmdRecordingType.ONLINE)
+            PolarDeviceDataType.SKIN_TEMPERATURE -> querySettings(identifier, PmdMeasurementType.SKIN_TEMP, PmdRecordingType.ONLINE)
             PolarDeviceDataType.HR,
             PolarDeviceDataType.PPI -> Single.error(PolarOperationNotSupported())
             else -> Single.error(PolarOperationNotSupported())
@@ -395,6 +403,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             PolarDeviceDataType.GYRO -> queryFullSettings(identifier, PmdMeasurementType.GYRO, PmdRecordingType.ONLINE)
             PolarDeviceDataType.MAGNETOMETER -> queryFullSettings(identifier, PmdMeasurementType.MAGNETOMETER, PmdRecordingType.ONLINE)
             PolarDeviceDataType.PPI,
+            PolarDeviceDataType.SKIN_TEMPERATURE,
             PolarDeviceDataType.HR -> Single.error(PolarOperationNotSupported())
             else -> Single.error(PolarOperationNotSupported())
         }
@@ -408,6 +417,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             PolarDeviceDataType.PPG -> querySettings(identifier, PmdMeasurementType.PPG, PmdRecordingType.OFFLINE)
             PolarDeviceDataType.GYRO -> querySettings(identifier, PmdMeasurementType.GYRO, PmdRecordingType.OFFLINE)
             PolarDeviceDataType.MAGNETOMETER -> querySettings(identifier, PmdMeasurementType.MAGNETOMETER, PmdRecordingType.OFFLINE)
+            PolarDeviceDataType.SKIN_TEMPERATURE -> querySettings(identifier, PmdMeasurementType.SKIN_TEMP, PmdRecordingType.OFFLINE)
             PolarDeviceDataType.HR,
             PolarDeviceDataType.PPI -> Single.error(PolarOperationNotSupported())
             else -> Single.error(PolarOperationNotSupported())
@@ -423,6 +433,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             PolarDeviceDataType.GYRO -> queryFullSettings(identifier, PmdMeasurementType.GYRO, PmdRecordingType.OFFLINE)
             PolarDeviceDataType.MAGNETOMETER -> queryFullSettings(identifier, PmdMeasurementType.MAGNETOMETER, PmdRecordingType.OFFLINE)
             PolarDeviceDataType.PPI,
+            PolarDeviceDataType.SKIN_TEMPERATURE,
             PolarDeviceDataType.HR -> Single.error(PolarOperationNotSupported())
             else -> Single.error(PolarOperationNotSupported())
         }
@@ -1762,6 +1773,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             .map { hrNotificationData: HrNotificationData ->
                 val sample = PolarHrData.PolarHrSample(
                     hrNotificationData.hrValue,
+                    0,
+                    0,
                     hrNotificationData.rrsMs,
                     hrNotificationData.rrPresent,
                     hrNotificationData.sensorContact,
@@ -1844,6 +1857,15 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
+    override fun startSkinTemperatureStreaming(identifier: String, sensorSetting: PolarSensorSetting): Flowable<PolarTemperatureData> {
+        return startStreaming(identifier, PmdMeasurementType.SKIN_TEMP, sensorSetting) { client: BlePMDClient ->
+            client.monitorSkinTemperatureNotifications(true)
+                .map { skinTemperature: SkinTemperatureData ->
+                    mapPmdClientSkinTemperatureDataToPolarTemperatureData(skinTemperature)
+                }
+        }
+    }
+
     override fun enableSDKMode(identifier: String): Completable {
         try {
             val session = sessionPmdClientReady(identifier)
@@ -1912,6 +1934,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 if (pmdFeature.contains(PmdMeasurementType.GYRO)) deviceData.add(PolarDeviceDataType.GYRO)
                 if (pmdFeature.contains(PmdMeasurementType.MAGNETOMETER)) deviceData.add(PolarDeviceDataType.MAGNETOMETER)
                 if (pmdFeature.contains(PmdMeasurementType.OFFLINE_HR)) deviceData.add(PolarDeviceDataType.HR)
+                if (pmdFeature.contains(PmdMeasurementType.SKIN_TEMP)) deviceData.add(PolarDeviceDataType.SKIN_TEMPERATURE)
                 deviceData
             }
     }
@@ -1951,6 +1974,9 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                         }
                         if (pmdFeature.contains(PmdMeasurementType.MAGNETOMETER)) {
                             deviceData.add(PolarDeviceDataType.MAGNETOMETER)
+                        }
+                        if (pmdFeature.contains(PmdMeasurementType.SKIN_TEMP)) {
+                            deviceData.add(PolarDeviceDataType.SKIN_TEMPERATURE)
                         }
 
                         deviceData
@@ -2012,9 +2038,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                                                 .toFlowable()
                                                 .flatMap {
                                                     backup.addAll(it)
-
                                                     BleLogger.d(TAG, "Device backup completed: $it, starting firmware update to version ${firmwareUpdateResponse.version}")
-
                                                     firmwareUpdateApi.getFirmwareUpdatePackage(firmwareUpdateResponse.fileUrl)
                                                             .toFlowable()
                                                             .flatMap { firmwareBytes ->
@@ -2025,6 +2049,14 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                                                                 var entry: ZipEntry?
                                                                 val buffer = ByteArray(PolarFirmwareUpdateUtils.BUFFER_SIZE)
                                                                 while (zipInputStream.nextEntry.also { entry = it } != null) {
+                                                                    val entryFileName = entry!!.name
+                                                                    // Polar H10 FW package has this file
+                                                                    if (entryFileName.equals("readme.txt")) {
+                                                                        BleLogger.d(TAG, "Skipping file $entryFileName")
+                                                                        zipInputStream.closeEntry()
+                                                                        continue
+                                                                    }
+
                                                                     val byteArrayOutputStream = ByteArrayOutputStream()
                                                                     var length: Int
                                                                     while (zipInputStream.read(buffer).also { length = it } != -1) {
@@ -2453,6 +2485,35 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 .flatMap { list ->
                     Single.just(nightlyRechargeDataList)
                 }
+    }
+
+    override fun getSkinTemperature(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarSkinTemperatureData>> {
+        val session = try {
+            sessionPsFtpClientReady(identifier)
+        } catch (error: Throwable) {
+            return Single.error(error)
+        }
+        val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
+            ?: return Single.error(PolarServiceNotAvailable())
+        val skinTemperatureDataList = mutableListOf<Pair<LocalDate, PolarSkinTemperatureResult>>()
+
+        val datesList = getDatesBetween(fromDate, toDate)
+
+        return Observable.fromIterable(datesList)
+            .flatMapMaybe { date ->
+                PolarSkinTemperatureUtils.readSkinTemperatureDataFromDayDirectory(client, date)
+                    .map { data: PolarSkinTemperatureResult ->
+                        Pair(date, data)
+                    }
+            }
+            .toList()
+            .map { pairs ->
+                pairs.forEach { pair ->
+                    skinTemperatureDataList.add(Pair(pair.first, pair.second))
+                }
+                skinTemperatureDataList.map { PolarSkinTemperatureData(it.first, it.second) }
+
+            }
     }
 
     private fun sendInitializationAndStartSyncNotifications(client: BlePsFtpClient) {
@@ -3101,6 +3162,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                                             deviceId,
                                             PolarHrData.PolarHrSample(
                                                 hrNotificationData.hrValue,
+                                                0,
+                                                0,
                                                 hrNotificationData.rrsMs,
                                                 hrNotificationData.rrPresent,
                                                 hrNotificationData.sensorContact,
@@ -3210,8 +3273,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             )
             PolarBleSdkFeature.FEATURE_POLAR_FIRMWARE_UPDATE -> isPolarFirmwareUpdateFeatureAvailable(discoveredServices, session)
             PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA -> isActivityDataFeatureAvailable(discoveredServices, session)
-
             PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA -> isActivityDataFeatureAvailable(discoveredServices, session)
+            PolarBleSdkFeature.FEATURE_POLAR_TEMPERATURE_DATA -> isActivityDataFeatureAvailable(discoveredServices, session)
         }
 
         return isFeatureAvailable.flatMapCompletable {
