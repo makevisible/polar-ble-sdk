@@ -2412,7 +2412,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
   
-  func updateFirmwareLocal(_ identifier: String, firmwarePackagePath: String) -> Observable<FirmwareUpdateStatus> {
+  func updateFirmwareLocal(_ identifier: String, _ filePath: String) -> Observable<FirmwareUpdateStatus> {
     do {
       let session = try self.sessionFtpClientReady(identifier)
       guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
@@ -2433,7 +2433,7 @@ extension PolarBleApiImpl: PolarBleApi  {
       return Observable.create { observer in
         do {
           // Read the firmware package from the local file
-          let firmwarePackage = try Data(contentsOf: URL(fileURLWithPath: firmwarePackagePath))
+          let firmwarePackage = try Data(contentsOf: URL(fileURLWithPath: filePath))
           
           backupManager.backupDevice()
             .asObservable()
