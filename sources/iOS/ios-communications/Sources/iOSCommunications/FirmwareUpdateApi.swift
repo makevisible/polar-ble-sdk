@@ -71,10 +71,10 @@ class FirmwareUpdateApi {
         }.resume()
     }
     
-    func checkFirmwareUpdateFromFirmwareUrl(_ url: URL, completion: @escaping (Result<FirmwareUpdateResponse, Error>) -> Void) {
+    func checkFirmwareUpdateFromFirmwareUrl(_ url: URL, _ version: String, completion: @escaping (Result<FirmwareUpdateResponse, Error>) -> Void) {
         let file = url.lastPathComponent
         if url.isFileURL && FileManager.default.fileExists(atPath: url.path) {
-            let responseWithUrl = FirmwareUpdateResponse(version: "custom(\(file))", fileUrl: url.absoluteString, statusCode: 200)
+            let responseWithUrl = FirmwareUpdateResponse(version: version, fileUrl: url.absoluteString, statusCode: 200)
             completion(.success(responseWithUrl))
             return
         }
@@ -83,7 +83,7 @@ class FirmwareUpdateApi {
         URLSession.shared.dataTask(with: request) { (data, response, error) in
             Task { @MainActor in
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                let responseWithUrl = FirmwareUpdateResponse(version: "custom(\(file))", fileUrl: url.absoluteString, statusCode: statusCode)
+                let responseWithUrl = FirmwareUpdateResponse(version: version, fileUrl: url.absoluteString, statusCode: statusCode)
                 completion(.success(responseWithUrl))
             }
         }.resume()

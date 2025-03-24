@@ -2697,7 +2697,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return updateFirmware(identifier, firmwareUrl = "")
     }
 
-    override fun updateFirmware(identifier: String, firmwareUrl: String): Flowable<FirmwareUpdateStatus> {
+    override fun updateFirmware(identifier: String, firmwareUrl: String, version: String): Flowable<FirmwareUpdateStatus> {
         val session = sessionPsFtpClientReady(identifier)
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient
         sendInitializationAndStartSyncNotifications(client)
@@ -2811,7 +2811,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     .concatMap { status ->
                         if (status is FirmwareUpdateStatus.FinalizingFwUpdate) {
                             waitDeviceSessionWithPftpToOpen(identifier, 6 * 60L, 60L)
-                                .andThen(Flowable.just(FirmwareUpdateStatus.FwUpdateCompletedSuccessfully("Firmware update completed successfully")))
+                                .andThen(Flowable.just(FirmwareUpdateStatus.FwUpdateCompletedSuccessfully(version)))
                         } else {
                             Flowable.just(status)
                         }
