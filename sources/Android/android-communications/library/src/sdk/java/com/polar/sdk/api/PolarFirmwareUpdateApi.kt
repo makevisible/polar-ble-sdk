@@ -14,16 +14,6 @@ import com.polar.sdk.api.model.PolarFirmwareVersionInfo
  */
 interface PolarFirmwareUpdateApi {
     /**
-     * Updates firmware to given device from local file.
-     *
-     * @param identifier Polar device ID or BT address
-     * @param filePath path to the file
-     * @param version firmware version
-     * @return [Flowable] emitting status of firmware update
-     */
-    fun updateFirmwareLocal(identifier: String, filePath: String, version: String): Flowable<FirmwareUpdateStatus>
-
-    /**
      * Updates firmware to given device.
      *
      * @param identifier Polar device ID or BT address
