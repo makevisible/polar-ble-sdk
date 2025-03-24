@@ -2694,7 +2694,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
     }
 
     override fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus> {
-        return updateFirmware(identifier, firmwareUrl = "")
+        return updateFirmware(identifier, firmwareUrl = "", version = "")
     }
 
     override fun updateFirmware(identifier: String, firmwareUrl: String, version: String): Flowable<FirmwareUpdateStatus> {

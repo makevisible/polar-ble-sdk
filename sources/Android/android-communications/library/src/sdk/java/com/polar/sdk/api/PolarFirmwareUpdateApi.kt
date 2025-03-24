@@ -39,7 +39,7 @@ interface PolarFirmwareUpdateApi {
      * @param firmwareUrl URL to firmware file. Firmware file must be compatible with target device
      * @return [Flowable] emitting status of firmware update
      */
-    fun updateFirmware(identifier: String, firmwareUrl: String): Flowable<FirmwareUpdateStatus>
+    fun updateFirmware(identifier: String, firmwareUrl: String, version: String): Flowable<FirmwareUpdateStatus>
 
     /**
      * Get firmware info for given device.
