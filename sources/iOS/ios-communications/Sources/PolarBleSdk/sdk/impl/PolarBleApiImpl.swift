@@ -2775,6 +2775,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .flatMap { status -> Observable<FirmwareUpdateStatus> in
                 if case FirmwareUpdateStatus.finalizingFwUpdate = status {
                     return self.handleFirmwareFinalization(identifier: identifier,
+                                                        version: version,
                                                         backupContent: backupContent,
                                                         backupManager: backupManager,
                                                         factoryResetMaxWaitTimeSeconds: factoryResetMaxWaitTimeSeconds,
@@ -2823,62 +2824,84 @@ extension PolarBleApiImpl: PolarBleApi  {
     
     // Helper method to handle firmware finalization (extracted to reduce code duplication)
     private func handleFirmwareFinalization(identifier: String,
+                                            version: String,
                                             backupContent: [PolarBackupManager.BackupFileData]?,
                                             backupManager: PolarBackupManager,
                                             factoryResetMaxWaitTimeSeconds: TimeInterval,
                                             rebootMaxWaitTimeSeconds: TimeInterval) -> Observable<FirmwareUpdateStatus> {
         return Observable.create { observer in
         BleLogger.trace("Firmware update is in finalizing stage")
-        
+
         BleLogger.trace("Device rebooting")
         self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
             .do(onSubscribe: {
-            BleLogger.trace("Waiting for device session to open after reboot with timeout: \(rebootMaxWaitTimeSeconds) seconds")
+                BleLogger.trace("Waiting for device session to open after reboot with timeout: \(rebootMaxWaitTimeSeconds) seconds")
             })
-            .andThen(Single.create { singleObserver in
-            do {
-                let session = try self.sessionFtpClientReady(identifier)
-                singleObserver(.success(session))
-            } catch {
-                BleLogger.trace("Error: \(error). Waiting for FTP client readiness.")
-                singleObserver(.failure(error))
-            }
-            return Disposables.create()
-            })
+            .andThen(Single.just(status))
             .flatMap { _ in
-            BleLogger.trace("Performing factory reset while preserving pairing information")
-            return self.doFactoryReset(identifier, preservePairingInformation: true)
-                .andThen(Single.just(()))
+                return Single.create { singleObserver in
+                    self.sessionFtpClientReady(identifier)
+                        .subscribe(
+                            onNext: { session in
+                                singleObserver(.success(session))
+                            },
+                            onError: { error in
+                                BleLogger.trace("FTP-client did not become ready: \(error). ")
+                                singleObserver(.failure(error))
+                            }
+                        )
+
+                    return Disposables.create()
+                }
+                .flatMap { _ in
+                    BleLogger.trace("Performing factory reset while preserving pairing information")
+                    return self.doFactoryReset(identifier, preservePairingInformation: true)
+                        .do(onSubscribe: {
+                            BleLogger.trace("Factory reset initiated")
+                        })
+                        .andThen(Single.just(()))
+                }
             }
             .flatMap { _ in
-            BleLogger.trace("Waiting for device session to open after factory reset")
-            return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
-                .andThen(Single.just(()))
+                BleLogger.trace("Waiting for device session to open after factory reset with timeout: \(factoryResetMaxWaitTimeSeconds) seconds")
+                return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                    .do(onSubscribe: {
+                        BleLogger.trace("Waiting for device session to open post factory reset")
+                    })
+                    .andThen(Single.just(()))
             }
             .flatMap { _ in
-            if let backupContent = backupContent {
-                BleLogger.trace("Restoring backup after firmware update")
-                return backupManager.restoreBackup(backupFiles: backupContent)
-                .andThen(Single.just(FirmwareUpdateStatus.fwUpdateCompletedSuccessfully(details: "Local update completed")))
-            } else {
-                return Single.just(FirmwareUpdateStatus.fwUpdateCompletedSuccessfully(details: "Local update completed"))
-            }
+                if let backupContent = backupContent {
+                    BleLogger.trace("Restoring backup after firmware update")
+                    return backupManager.restoreBackup(backupFiles: backupContent)
+                        .do(onSubscribe: {
+                            BleLogger.trace("Backup restoration initiated")
+                        })
+                        .andThen(Single.just(FirmwareUpdateStatus.fwUpdateCompletedSuccessfully(details: version!)))
+                } else {
+                    BleLogger.trace("No backup available to restore, proceeding with completion")
+                    return Single.just(FirmwareUpdateStatus.fwUpdateCompletedSuccessfully(details: version!))
+                }
             }
             .asObservable()
             .subscribe(
-            onNext: { status in
-                observer.onNext(status)
-            },
-            onError: { error in
-                observer.onError(error)
-            },
-            onCompleted: {
-                observer.onCompleted()
-            }
+                onNext: { status in
+                    BleLogger.trace("Emitting next status: \(status)")
+                    observer.onNext(status)
+                },
+                onError: { error in
+                    BleLogger.trace("Error during device reboot or factory reset: \(error)")
+                    observer.onError(error)
+                },
+                onCompleted: {
+                    BleLogger.trace("Device reboot and factory reset completed successfully")
+                    observer.onCompleted()
+                }
             )
         return Disposables.create()
-        }
-    } 
+    }
+    }
+
     func updateFirmware(_ identifier: String) -> Observable<FirmwareUpdateStatus> {
        return updateFirmware(identifier, firmwareURL: nil)
     }
