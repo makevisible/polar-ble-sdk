@@ -1819,9 +1819,9 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    private func removeOfflineFilesRecursively(_ client: BlePsFtpClient, _ deletePath: String, fileType: String?, deleteIfMatchesRegex: String? = nil)
-        BleLogger.trace("removeOfflineFilesRecursively: remove offline files from path \(deletePath)")
+    private func removeOfflineFilesRecursively(_ client: BlePsFtpClient, _ deletePath: String, fileType: String?, deleteIfMatchesRegex: String? = nil) -> Completable {
         do {
+            BleLogger.trace("removeOfflineFilesRecursively: remove offline files from path \(deletePath)")
             if(deleteIfMatchesRegex != nil) {
                 guard deletePath.contains(deleteIfMatchesRegex!) else {
                     BleLogger.trace("removeOfflineFilesRecursively: not valid offline recording path to delete $deletePath")
