@@ -1,13 +1,13 @@
 Pod::Spec.new do |s|  
     s.name              = 'PolarBleSdk'
-    s.version           = '5.17.0'
+    s.version           = '5.17.3'
     s.summary           = 'SDK for Polar sensors'
-    s.homepage          = 'https://github.com/polarofficial/polar-ble-sdk'
+    s.homepage          = 'https://github.com/makevisible/polar-ble-sdk'
     s.license           = { :type => 'Custom', :file => 'Polar_SDK_License.txt' }
     s.authors           = 'Polar Electro Oy'  
     s.swift_versions    = '5.0'
     s.cocoapods_version = '>= 1.10'
-    s.source            = { :git => 'https://github.com/polarofficial/polar-ble-sdk.git', :tag => s.version.to_s }
+    s.source            = { :git => 'https://github.com/makevisible/polar-ble-sdk.git', :tag => s.version.to_s }
 
     s.ios.deployment_target = '14.0'
     
