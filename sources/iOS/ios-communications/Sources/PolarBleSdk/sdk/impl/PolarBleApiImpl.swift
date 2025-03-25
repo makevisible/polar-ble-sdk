@@ -1757,6 +1757,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(err)
         }
     }
+    
     func removeOfflineRecord(_ identifier: String, entry: PolarOfflineRecordingEntry) -> Completable {
         BleLogger.trace("removeOfflineRecord: remove offline, record device \(identifier) path \(entry.path)")
         do {
@@ -2694,7 +2695,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "Error: \(error.localizedDescription)"))
         }
     }
-
+    
     func updateFirmware(_ identifier: String) -> Observable<FirmwareUpdateStatus> {
        return updateFirmware(identifier, firmwareURL: nil)
     }
