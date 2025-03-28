@@ -165,7 +165,7 @@ import UIKit
         return content.polarDeviceId.count != 0 && content.polarDeviceType != "mobile"
     }
     
-    private func sessionPmdClientReady(_ identifier: String) throws -> BleDeviceSession {
+    func sessionPmdClientReady(_ identifier: String) throws -> BleDeviceSession {
         let session = try sessionServiceReady(identifier, service: BlePmdClient.PMD_SERVICE)
         let client = session.fetchGattClient(BlePmdClient.PMD_SERVICE) as! BlePmdClient
         if client.isCharacteristicNotificationEnabled(BlePmdClient.PMD_CP) &&

@@ -223,6 +223,8 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     func connectToDevice(_ identifier: String) throws
 
     func fetchSession(_ identifier: String) throws -> BleDeviceSession?
+  
+    func sessionPmdClientReady(_ identifier: String) throws -> BleDeviceSession
     
     /// Disconnect from the current Polar device.
     ///
