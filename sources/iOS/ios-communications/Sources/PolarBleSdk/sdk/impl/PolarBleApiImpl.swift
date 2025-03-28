@@ -2831,25 +2831,39 @@ extension PolarBleApiImpl: PolarBleApi  {
                                             return PolarFirmwareUpdateUtils.FwFileComparator.compare(file1.key, file2.key) == .orderedAscending
                                         }
 
-                                        return Observable.from(sortedFirmwarePackage)
-                                            .concatMap { fileEntry -> Observable<FirmwareUpdateStatus> in
-                                                let fileName = fileEntry.key
-                                                let firmwareBytes = fileEntry.value
-                                                let filePath = "/\(fileName)"
-                                                
-                                                // Polar H10 FW package has this file
-                                                if fileName.lowercased() == "readme.txt" {
-                                                    BleLogger.trace("Skipping file \(fileName)")
-                                                    return Observable.just(FirmwareUpdateStatus.writingFwUpdatePackage(details: "Skipping file \(fileName)"))
-                                                }
-
-                                                return self.writeFirmwareToDevice(deviceId: identifier, firmwareFilePath: filePath, firmwareBytes: firmwareBytes)
-                                                    .map { bytesWritten -> FirmwareUpdateStatus in
-                                                        BleLogger.trace("Writing firmware update file \(fileName), bytes written: \(bytesWritten)/\(firmwareBytes.count) bytes")
-                                                        return FirmwareUpdateStatus.writingFwUpdatePackage(details: "Writing firmware update file \(fileName), bytes written: \(bytesWritten)/\(firmwareBytes.count) bytes")
+                                        return Completable.deferred {
+                                            BleLogger.trace("Performing factory reset while preserving pairing information")
+                                            return self.doFactoryReset(identifier, preservePairingInformation: true)
+                                        }
+                                        .andThen(Completable.deferred {
+                                            BleLogger.trace("Waiting for device session to open after factory reset")
+                                            return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                        })
+                                        .andThen(Observable.deferred {
+                                            BleLogger.trace("Writing firmware update files: \(sortedFirmwarePackage.count)")
+                                            return Observable.from(sortedFirmwarePackage)
+                                                .concatMap { fileEntry -> Observable<FirmwareUpdateStatus> in
+                                                    let fileName = fileEntry.key
+                                                    let firmwareBytes = fileEntry.value
+                                                    let filePath = "/\(fileName)"
+                                                    
+                                                    // Polar H10 FW package has this file
+                                                    if fileName.lowercased() == "readme.txt" {
+                                                        BleLogger.trace("Skipping file \(fileName)")
+                                                        return Observable.just(FirmwareUpdateStatus.writingFwUpdatePackage(details: "Skipping file \(fileName)"))
                                                     }
-                                            }
-                                            .concat(Observable.just(FirmwareUpdateStatus.finalizingFwUpdate(details: "Finalizing firmware update...")))
+
+                                                    return self.writeFirmwareToDevice(deviceId: identifier, firmwareFilePath: filePath, firmwareBytes: firmwareBytes)
+                                                        .map { bytesWritten -> FirmwareUpdateStatus in
+                                                            BleLogger.trace("Writing firmware update file \(fileName), bytes written: \(bytesWritten)/\(firmwareBytes.count) bytes")
+                                                            return FirmwareUpdateStatus.writingFwUpdatePackage(details: "Writing firmware update file \(fileName), bytes written: \(bytesWritten)/\(firmwareBytes.count) bytes")
+                                                        }
+                                                }
+                                                .concat(Observable.deferred {
+                                                    BleLogger.trace("Firmware update files written, finalizing firmware update")
+                                                    return Observable.just(FirmwareUpdateStatus.finalizingFwUpdate(details: "Finalizing firmware update..."))
+                                                })
+                                        })
                                     }
                             }
                             .flatMap { status -> Observable<FirmwareUpdateStatus> in
