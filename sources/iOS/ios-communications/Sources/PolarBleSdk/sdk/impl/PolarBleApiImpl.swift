@@ -1775,7 +1775,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                     if count == 0 {
                         /// If sub recording count is 0, then it device is using old format (single recording file).
                         BleLogger.trace("removeOfflineRecord: removing old format recording file (sub recording count is 0)")
-                        return self.removeOfflineFilesRecursively(client, entry.path, fileType: nil, deleteIfMatchesRegex: "/\\d{8}/")
+                        return self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/")
                     } else {
                         /// Otherwise, device is using new format (split recording files).
                         BleLogger.trace("removeOfflineRecord: removing split recording files (sub recording count is \(count))")
@@ -1803,7 +1803,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             .asCompletable()
                             .andThen(Completable.deferred {
                                 BleLogger.trace("removeOfflineRecord: removing sub recording files completed, cleaning up parent directories")
-                                return self.removeOfflineFilesRecursively(client, entry.path, fileType: nil, deleteIfMatchesRegex: "/\\d{8}/")
+                                return self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/")
                                     .do(
                                         onError: { error in
                                             BleLogger.error("removeOfflineRecord: failed to clean up parent directories, \(error)")
@@ -1820,7 +1820,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    private func removeOfflineFilesRecursively(_ client: BlePsFtpClient, _ deletePath: String, fileType: String?, deleteIfMatchesRegex: String? = nil) -> Completable {
+    private func removeOfflineFilesRecursively(_ client: BlePsFtpClient, _ deletePath: String, deleteIfMatchesRegex: String? = nil) -> Completable {
         do {
             BleLogger.trace("removeOfflineFilesRecursively: remove offline files from path \(deletePath)")
             if(deleteIfMatchesRegex != nil) {
@@ -1854,7 +1854,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .flatMapCompletable { content -> Completable in
                     do {
                         let parentDirEntries = try Protocol_PbPFtpDirectory(serializedData: content as Data)
-                        let cantDeleteDueOtherFiles = fileType == nil || parentDirEntries.entries.contains { $0.name.hasPrefix(fileType!) == false }
                         let isParentDirValid: Bool
                         if let regex = deleteIfMatchesRegex {
                             isParentDirValid = parentDir.contains(regex)
@@ -1868,10 +1867,10 @@ extension PolarBleApiImpl: PolarBleApi  {
                             BleLogger.trace("removeOfflineFilesRecursively: parentDirEntries: \(entry.name)")
                         }
 
-                        if isParentDirValid && false == cantDeleteDueOtherFiles {
+                        if isParentDirValid {
                             // It is safe to remove the parent dir
                             BleLogger.trace("removeOfflineFilesRecursively: call removeOfflineFilesRecursively for parent directory \(parentDir)")
-                            return self.removeOfflineFilesRecursively(client, parentDir, fileType: nil, deleteIfMatchesRegex: deleteIfMatchesRegex)
+                            return self.removeOfflineFilesRecursively(client, parentDir, deleteIfMatchesRegex: deleteIfMatchesRegex)
                         } else {
                             BleLogger.trace(" Remove offline recording from the path \(deletePath)")
                             var removeOperation = Protocol_PbPFtpOperation()
@@ -1955,7 +1954,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 self.removeSingleFile(identifier: identifier, filePath: deletePath).subscribe (
                                     onSuccess: {_ in
                                         if idx == subrecords.count {
-                                            self.removeOfflineFilesRecursively(client, entry.path, fileType: fileType, deleteIfMatchesRegex: "/\\d{8}/").subscribe(
+                                            self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/").subscribe(
                                                 onCompleted: {
                                                     return singleEmitter(.success(true))
                                                 }
