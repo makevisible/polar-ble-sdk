@@ -1860,6 +1860,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                         } else {
                             isParentDirValid = true
                         }
+
+                        let parentDirContainsOtherFiles = parentDirEntries.entries.count > 1
+                        BleLogger.trace("removeOfflineFilesRecursively: parentDirContainsOtherFiles \(parentDirContainsOtherFiles)")
                         
                         BleLogger.trace("removeOfflineFilesRecursively: isParentDirValid \(isParentDirValid), parentDirEntries count \(parentDirEntries.entries.count)")
                         
@@ -1867,12 +1870,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                             BleLogger.trace("removeOfflineFilesRecursively: parentDirEntries: \(entry.name)")
                         }
 
-                        if isParentDirValid {
+                        if !parentDirContainsOtherFiles && isParentDirValid {
                             // It is safe to remove the parent dir
                             BleLogger.trace("removeOfflineFilesRecursively: call removeOfflineFilesRecursively for parent directory \(parentDir)")
                             return self.removeOfflineFilesRecursively(client, parentDir, deleteIfMatchesRegex: deleteIfMatchesRegex)
                         } else {
-                            BleLogger.trace(" Remove offline recording from the path \(deletePath)")
+                            BleLogger.trace("removeOfflineFilesRecursively: Remove offline recording from the path \(deletePath)")
                             var removeOperation = Protocol_PbPFtpOperation()
                             removeOperation.command = .remove
                             removeOperation.path = deletePath
