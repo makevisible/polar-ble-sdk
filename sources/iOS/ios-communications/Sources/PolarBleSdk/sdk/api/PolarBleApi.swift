@@ -406,6 +406,9 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// @param identifier, Polar device ID or BT address
     /// @param filePath, File path to delete
     func removeSingleFile(identifier: String, filePath: String) -> Single<NSData>
+  
+    /// Get file
+    func getFile(identifier: String, filePath: String) -> Observable<NSData>
     
     /// Delete device date folders from a device.
     /// - Parameters:
