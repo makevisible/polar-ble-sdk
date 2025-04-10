@@ -209,6 +209,10 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             override fun d_hex(tag: String, msg: String, data: ByteArray) {
                 log("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
             }
+
+            override fun e_hex(tag: String, msg: String, data: ByteArray) {
+                logError("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
+            }
         })
 
         RxJavaPlugins.setErrorHandler { e: Throwable ->

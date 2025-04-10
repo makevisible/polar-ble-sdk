@@ -9,6 +9,7 @@ class BleLogger {
         fun w(tag: String, msg: String)
         fun i(tag: String, msg: String)
         fun d_hex(tag: String, msg: String, data: ByteArray)
+        fun e_hex(tag: String, msg: String, data: ByteArray)
     }
 
     private var bleLoggerInterface: BleLoggerInterface? = null
@@ -50,6 +51,13 @@ class BleLogger {
         fun e(tag: String, msg: String) {
             synchronized(instance.mutex) {
                 instance.bleLoggerInterface?.e(tag, msg)
+            }
+        }
+
+        @JvmStatic
+        fun e_hex(tag: String, msg: String, data: ByteArray) {
+            synchronized(instance.mutex) {
+                instance.bleLoggerInterface?.e(tag, msg + " HEX: " + byteArrayToHex(data))
             }
         }
 

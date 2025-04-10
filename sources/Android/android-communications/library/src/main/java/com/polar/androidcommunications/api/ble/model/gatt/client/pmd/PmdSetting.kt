@@ -1,5 +1,6 @@
 package com.polar.androidcommunications.api.ble.model.gatt.client.pmd
 
+import com.polar.androidcommunications.api.ble.BleLogger
 import com.polar.androidcommunications.common.ble.TypeUtils
 import java.io.ByteArrayOutputStream
 import java.util.AbstractMap
@@ -53,6 +54,8 @@ class PmdSetting {
                 val item: Int? = try {
                     TypeUtils.convertArrayToSignedInt(data, offset, fieldSize)
                 } catch (e: Exception) {
+                    BleLogger.d_hex("PmdSetting", "pmd data: ", data)
+                    BleLogger.e("PmdSetting", "Failed to parse PmdSetting data. Type: $type, offset: $offset, fieldSize: $fieldSize, data: $data")
                     throw e
                 }
 
@@ -72,6 +75,7 @@ class PmdSetting {
                 EnumMap<PmdSettingType, Set<Int>>? = try {
             parsePmdSettingsData(data)
         } catch (e: Exception) {
+            BleLogger.e_hex("PmdSetting", "Failed in updateSelectedFromStartResponse", data)
             throw e
         }
 
