@@ -3735,7 +3735,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
     
-    private func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+    func getFile(identifier: String, filePath: String) -> Observable<NSData> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
