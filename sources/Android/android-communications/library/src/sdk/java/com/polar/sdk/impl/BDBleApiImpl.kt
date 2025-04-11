@@ -4007,7 +4007,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                         session.previousState == DeviceSessionState.SESSION_OPEN_PARK ||
                         session.previousState == DeviceSessionState.SESSION_CLOSING
                     ) {
-                        Completable.fromAction { it.deviceDisconnected(info, false) }
+                        Completable.fromAction { it.deviceDisconnected(info) }
                             .subscribeOn(AndroidSchedulers.mainThread())
                             .subscribe()
                     }
@@ -4024,7 +4024,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             DeviceSessionState.SESSION_OPEN_PARK -> {
                 callback?.let {
                     if (session.previousState == DeviceSessionState.SESSION_OPENING || session.previousState == DeviceSessionState.SESSION_OPEN) {
-                        Completable.fromAction { it.deviceDisconnected(info, true) }
+                        Completable.fromAction { it.deviceDisconnected(info) }
                             .subscribeOn(AndroidSchedulers.mainThread())
                             .subscribe()
                     }
