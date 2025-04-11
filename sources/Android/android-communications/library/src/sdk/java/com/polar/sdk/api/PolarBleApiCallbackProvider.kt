@@ -37,9 +37,8 @@ interface PolarBleApiCallbackProvider {
      * Device is now disconnected
      *
      * @param polarDeviceInfo Polar device information
-     * @param pairingError if true, it indicates that the disconnection was caused by a pairing error. In this case, try removing the pairing from the system settings.
      */
-    fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo, pairingError: Boolean)
+    fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo)
 
     /**
      * The feature is available in this device and it is ready. Called only for the features which are specified in [PolarBleApi] construction.
