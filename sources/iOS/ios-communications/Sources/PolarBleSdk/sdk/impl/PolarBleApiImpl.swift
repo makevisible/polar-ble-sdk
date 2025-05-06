@@ -1336,7 +1336,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 do {
                     let components = entry.name.split(separator: "/")
                     let dateFormatter = DateFormatter()
-                    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+                    dateFormatter.calendar = .init(identifier: .iso8601)
+                dateFormatter.locale = Locale(identifier: "en_US_POSIX")
                     dateFormatter.isLenient = true
 
                     if components[2].count == 8 && components[4].count == 6 {
@@ -1510,7 +1511,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                       observer.onNext(polarTemperatureData!)
                                                   case let skinTemperatureData as SkinTemperatureData:
                                                       polarSkinTemperatureData = self.processSkinTemperatureData(skinTemperatureData, polarSkinTemperatureData, offlineRecordingData)
-                                                      observer.onNext(polarTemperatureData!)
+                                                      observer.onNext(polarSkinTemperatureData!)
                                                   default:
                                                       observer.onError(PolarErrors.polarOfflineRecordingError(description: "GetOfflineRecording failed. Data type is not supported."))
                                                       return
@@ -1534,12 +1535,14 @@ extension PolarBleApiImpl: PolarBleApi  {
                       .asCompletable()
 
                   _ = processingObservable.andThen(Single.deferred {
-                      let data = polarAccData ?? polarGyroData ?? polarMagData ?? polarPpgData ?? polarPpiData ?? polarHrData ?? polarTemperatureData
-                      if let validData = data {
-                          return Single.just(validData)
-                      } else {
-                          return Single.error(PolarErrors.polarOfflineRecordingError(description: "Invalid data"))
+                      let offlineDataObjects = [polarAccData, polarGyroData, polarMagData, polarPpgData, polarPpiData, polarHrData, polarTemperatureData, polarSkinTemperatureData]
+
+                      for dataObject in offlineDataObjects {
+                          if let data = dataObject {
+                              return Single.just(data)
+                          }
                       }
+                      return Single.error(PolarErrors.polarOfflineRecordingError(description: "Invalid data"))
                   })
                   .subscribe(
                       onSuccess: { data in
@@ -1655,6 +1658,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             .map { (entry) -> PolarOfflineRecordingEntry in
                 let components = entry.name.split(separator: "/")
                 let dateFormatter = DateFormatter()
+                dateFormatter.calendar = .init(identifier: .iso8601)
                 dateFormatter.locale = Locale(identifier: "en_US_POSIX")
                 dateFormatter.dateFormat = "yyyyMMddHHmmss"
 
@@ -2275,6 +2279,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .map { (entry) -> (path: String, date: Date, entryId: String) in
                     let components = entry.name.split(separator: "/")
                     let dateFormatter = DateFormatter()
+                    dateFormatter.calendar = .init(identifier: .iso8601)
                     dateFormatter.locale = Locale(identifier: "en_US_POSIX")
                     dateFormatter.dateFormat = "yyyyMMddHHmmss"
                     if let date = dateFormatter.date(from: String(components[2] + components[4])) {
@@ -3235,12 +3240,30 @@ extension PolarBleApiImpl: PolarBleApi  {
 
             var builder = Protocol_PbPFtpFactoryResetParams()
             builder.sleep = true
-            builder.otaFwupdate = true
+            builder.doFactoryDefaults = true
             BleLogger.trace("Setting warehouse sleep to true, and do a required factory reset to the device: \(identifier).")
             return try client.sendNotification(Protocol_PbPFtpHostToDevNotification.reset.rawValue, parameters: builder.serializedData() as NSData)
             } catch let err {
                 return Completable.error(err)
             }
+    }
+    
+    func turnDeviceOff(_ identifier: String) -> Completable {
+        do {
+            let session = try sessionFtpClientReady(identifier)
+
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Completable.error(PolarErrors.serviceNotFound)
+            }
+
+            var builder = Protocol_PbPFtpFactoryResetParams()
+            builder.sleep = true
+            builder.doFactoryDefaults = false
+            BleLogger.trace("Turn off device device \(identifier) by setting sleep setting to true.")
+            return try client.sendNotification(Protocol_PbPFtpHostToDevNotification.reset.rawValue, parameters: builder.serializedData() as NSData)
+        } catch let err {
+            return Completable.error(err)
+        }
     }
 
     func getActiveTime(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarActiveTimeData]> {
@@ -3291,7 +3314,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
     
-    func setPolarUserDeviceSettings(_ identifier: String, polarUserDeviceSettings: PolarUserDeviceSettings?) -> Completable {
+    func setPolarUserDeviceSettings(_ identifier: String, polarUserDeviceSettings: PolarUserDeviceSettings) -> Completable {
         return Completable.create { completable in
             do {
                 let session = try self.sessionFtpClientReady(identifier)
@@ -3299,7 +3322,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                     completable(.error(PolarErrors.serviceNotFound))
                     return Disposables.create()
                 }
-                let userDeviceSettingsData = try PolarUserDeviceSettings.toProto(deviceUserLocation: polarUserDeviceSettings!.deviceLocation).serializedData()
+                let userDeviceSettingsData = try PolarUserDeviceSettings.toProto(
+                    userDeviceSettings: polarUserDeviceSettings).serializedData()
 
                 var operation = Protocol_PbPFtpOperation()
                 operation.command = Protocol_PbPFtpOperation.Command.put
@@ -3809,6 +3833,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         ).subscribe()
     }
 
+
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
         BleLogger.trace("writeFirmwareToDevice(): deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
         return Observable.create { observer in
@@ -3987,9 +4012,9 @@ extension PolarBleApiImpl: PolarBleApi  {
     ) -> PolarOfflineRecordingData {
         switch existingData {
         case let .ppgOfflineRecordingData(existingData, startTime, existingSettings):
-            let newSamples = existingData.samples + ppgData.samples.map { (timeStamp: $0.timeStamp!, channelSamples: $0.ppgDataSamples) }
+            let newSamples = existingData.samples + ppgData.samples.map { (timeStamp: $0.timeStamp!, channelSamples: $0.ppgDataSamples!) }
             return .ppgOfflineRecordingData(
-                (samples: newSamples, type: existingData.type),
+                (type: existingData.type, samples: newSamples),
                 startTime: startTime,
                 settings: existingSettings
             )
@@ -4128,18 +4153,17 @@ extension PolarBleApiImpl: PolarBleApi  {
                 timeStamp: newSamples.last?.timeStamp ?? existingData.timeStamp,
                 samples: newSamples
             )
-            return .temperatureOfflineRecordingData(
+            return .skinTemperatureOfflineRecordingData(
                 updatedData,
                 startTime: startTime
             )
         default:
-            return .temperatureOfflineRecordingData(
+            return .skinTemperatureOfflineRecordingData(
                 skinTemperatureData.mapToPolarData(),
                 startTime: offlineRecordingData.startTime
             )
         }
     }
-
 
     private func querySettings(_ identifier: String, type: PmdMeasurementType, recordingType: PmdRecordingType) -> Single<PolarSensorSetting> {
         do {
@@ -4415,8 +4439,8 @@ private extension PpgData {
                 dataType = PpgDataType.ppg17
             } else if (sample.frameType == PmdDataFrameType.type_10) {
                 var samples = sample.ppgDataSamples
-                samples.append(sample.status)
-                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: samples))
+                samples!.append(sample.status)
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: samples!))
                 dataType = PpgDataType.ppg21
             } else if (sample.frameType == PmdDataFrameType.type_9) {
                 polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: sample.ppgDataSamples))
