@@ -417,6 +417,8 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      */
     abstract fun getUserDeviceSettings(identifier: String): Single<PolarUserDeviceSettings>
 
+    abstract fun deleteStoredDeviceDataOld(identifier: String, dataType: PolarStoredDataType, until: LocalDate?): Flowable<ConcurrentLinkedQueue<String>>
+
     /**
      * Delete data [PolarStoredDataType] from a device. Note that you will need to await for completion.
      *
