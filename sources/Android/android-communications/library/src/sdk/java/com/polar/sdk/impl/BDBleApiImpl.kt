@@ -3086,7 +3086,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
-    override fun getSteps(identifier: String, fromDate: Date, toDate: Date): Single<List<PolarStepsData>> {
+    override fun getSteps(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarStepsData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
@@ -3095,17 +3095,9 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
                 ?: return Single.error(PolarServiceNotAvailable())
 
-        val stepsDataList = mutableListOf<Pair<Date, Int>>()
+        val stepsDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
                 .flatMapSingle { date ->
@@ -3123,7 +3115,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 }
     }
 
-    override fun getDistance(identifier: String, fromDate: Date, toDate: Date): Single<List<PolarDistanceData>> {
+    override fun getDistance(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarDistanceData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
@@ -3132,17 +3124,9 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val distanceDataList = mutableListOf<Pair<Date, Float>>()
+        val distanceDataList = mutableListOf<Pair<LocalDate, Float>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
             .flatMapSingle { date ->
@@ -3219,7 +3203,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             }
     }
 
-    override fun getCalories(identifier: String, fromDate: Date, toDate: Date, caloriesType: CaloriesType): Single<List<PolarCaloriesData>> {
+    override fun getCalories(identifier: String, fromDate: LocalDate, toDate: LocalDate, caloriesType: CaloriesType): Single<List<PolarCaloriesData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
@@ -3228,17 +3212,9 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val caloriesDataList = mutableListOf<Pair<Date, Int>>()
+        val caloriesDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
             .flatMapSingle { date ->
@@ -3268,7 +3244,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return datesList
     }
 
-    override fun getActiveTime(identifier: String, fromDate: Date, toDate: Date): Single<List<PolarActiveTimeData>> {
+    override fun getActiveTime(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarActiveTimeData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
@@ -3277,15 +3253,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
             .flatMapSingle { date ->
@@ -3410,7 +3378,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return PolarAutomaticSamplesUtils.read247PPiSamples(client, fromDate, toDate)
     }
 
-    override fun getNightlyRecharge(identifier: String, fromDate: Date, toDate: Date): Single<List<PolarNightlyRechargeData>> {
+    override fun getNightlyRecharge(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarNightlyRechargeData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
@@ -3421,15 +3389,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val nightlyRechargeDataList = mutableListOf<PolarNightlyRechargeData>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
                 .flatMapMaybe { date ->
