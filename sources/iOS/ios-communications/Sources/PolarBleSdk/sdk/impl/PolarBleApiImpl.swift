@@ -3809,7 +3809,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    private func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+    public func getFile(identifier: String, filePath: String) -> Observable<NSData> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
@@ -3873,130 +3873,98 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
 
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
-        BleLogger.trace("writeFirmwareToDevice(): deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
-        return Observable.create { observer in
-            
-            guard let session = try? self.sessionFtpClientReady(deviceId) else {
-                observer.onError(PolarErrors.deviceNotConnected)
-                return Disposables.create()
-            }
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                observer.onError(PolarErrors.serviceNotFound)
-                return Disposables.create()
-            }
-
-            BleLogger.trace("Initialize session")
-            return client.query(Protocol_PbPFtpQuery.prepareFirmwareUpdate.rawValue, parameters: nil).asCompletable()
-                .andThen(Completable.create { completable in
-                    do {
-                        BleLogger.trace("Start \(firmwareFilePath) write")
-                        var builder = Protocol_PbPFtpOperation()
-                        builder.command = Protocol_PbPFtpOperation.Command.put
-                        builder.path = firmwareFilePath
-                        let proto = try builder.serializedData()
-                        
-                        _ = client.write(proto as NSData, data: InputStream(data: firmwareBytes))
-                            .throttle(.seconds(5), scheduler: MainScheduler.instance)
-                            .do(onNext: { bytesWritten in
-                                BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
-                                observer.onNext(UInt(bytesWritten))
-                            })
-                            .ignoreElements()
-                            .asCompletable()
-                            .subscribe(onCompleted: {
-                                if firmwareFilePath.contains("SYSUPDAT.IMG") {
-                                    BleLogger.trace("Firmware file is SYSUPDAT.IMG, waiting for reboot")
-                                }
-                                observer.onCompleted()
-                                completable(.completed)
-                            }, onError: { error in
-                                if let pftpError = Protocol_PbPFtpError(rawValue: error._code) {
-                                    if pftpError == .batteryTooLow {
-                                        observer.onError(PolarErrors.deviceError(description: "Battery too low to perform firmware update"))
-                                    } else {
-                                        BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
-                                        observer.onError(error)
-                                    }
-                                } else {
-                                    BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
-                                    observer.onError(error)
-                                }
-                                completable(.error(error))
-                            })
-                    } catch {
-                        completable(.error(error))
-                    }
-                    return Disposables.create()
+      
+      BleLogger.trace("Write FW to device deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
+      return Observable.create { observer in
+        
+        guard let session = try? self.sessionFtpClientReady(deviceId) else {
+          observer.onError(PolarErrors.deviceNotConnected)
+          return Disposables.create()
+        }
+        guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+          observer.onError(PolarErrors.serviceNotFound)
+          return Disposables.create()
+        }
+        
+        BleLogger.trace("Initialize session")
+        return client.query(Protocol_PbPFtpQuery.prepareFirmwareUpdate.rawValue, parameters: nil).asCompletable()
+          .andThen(Completable.create { completable in
+            do {
+              BleLogger.trace("Start \(firmwareFilePath) write")
+              var builder = Protocol_PbPFtpOperation()
+              builder.command = Protocol_PbPFtpOperation.Command.put
+              builder.path = firmwareFilePath
+              let proto = try builder.serializedData()
+              
+              _ = client.write(proto as NSData, data: InputStream(data: firmwareBytes))
+                .throttle(.seconds(5), scheduler: MainScheduler.instance)
+                .do(onNext: { bytesWritten in
+                  BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
+                  observer.onNext(UInt(bytesWritten))
                 })
                 .ignoreElements()
                 .asCompletable()
                 .subscribe(onCompleted: {
-                    if firmwareFilePath.contains("SYSUPDAT.IMG") {
-                        BleLogger.trace("writeFirmwareToDevice(): Firmware file is SYSUPDAT.IMG, waiting for reboot")
-                    }
-                    observer.onCompleted()
+                  if firmwareFilePath.contains("SYSUPDAT.IMG") {
+                    BleLogger.trace("Firmware file is SYSUPDAT.IMG, waiting for reboot")
+                  }
+                  observer.onCompleted()
+                  completable(.completed)
                 }, onError: { error in
-                    BleLogger.trace("writeFirmwareToDevice(): ERROR: \(error.localizedDescription)")
-                    if (error.localizedDescription.contains("ResponseError error 1")) {
-                        observer.onCompleted()
+                  if let pftpError = Protocol_PbPFtpError(rawValue: error._code) {
+                    if pftpError == .batteryTooLow {
+                      observer.onError(PolarErrors.deviceError(description: "Battery too low to perform firmware update"))
                     } else {
-                        BleLogger.trace("writeFirmwareToDevice(): Error in writeFirmwareToDevice(): \(error.localizedDescription)")
-                        observer.onError(error)
+                      BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
+                      observer.onError(error)
                     }
+                  } else {
+                    BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
+                    observer.onError(error)
+                  }
+                  completable(.error(error))
                 })
             } catch {
-                observer.onError(error)
+              completable(.error(error))
             }
-            
             return Disposables.create()
-        }
-    }
-
-    private func waitDeviceSessionToOpen(deviceId: String, timeoutSeconds: Int, waitForDeviceDownSeconds: Int = 0) -> Completable {
-        BleLogger.trace("Wait for device session to open, timeoutSeconds: \(timeoutSeconds), waitForDeviceDownSeconds: \(waitForDeviceDownSeconds)")
-        let pollIntervalSeconds = 5
-
-        return Completable.create { emitter in
-            var disposable: Disposable?
-            disposable = Observable<Int>.timer(RxTimeInterval.seconds(waitForDeviceDownSeconds), scheduler: MainScheduler.instance)
-                .flatMap { _ in
-                    Observable<Int>.interval(RxTimeInterval.seconds(pollIntervalSeconds), scheduler: MainScheduler.instance)
-                        .take(until: Observable<Int>.timer(RxTimeInterval.seconds(timeoutSeconds), scheduler: MainScheduler.instance))
-                }
-                .timeout(RxTimeInterval.seconds(timeoutSeconds), scheduler: MainScheduler.instance)
-                .subscribe(onNext: { _ in
-                    let isSessionOpen = self.deviceSessionState == BleDeviceSession.DeviceSessionState.sessionOpen
-                    let isPftpClientReady = self.isPftpClientReady(deviceId)
-                    
-                    BleLogger.trace("waitDeviceSessionWithPftpToOpen(): isSessionOpen \(isSessionOpen), isFTPReady \(isPftpClientReady)")
-                    
-                    if isSessionOpen && isPftpClientReady {
-                        BleLogger.trace("waitDeviceSessionWithPftpToOpen(): completed")
-                        disposable?.dispose()
-                        emitter(.completed)
-                    } else {
-                        BleLogger.trace("waitDeviceSessionWithPftpToOpen(): current state \(String(describing: self.deviceSessionState))")
-                    }
-                }, onError: { error in
-                    BleLogger.error("waitDeviceSessionWithPftpToOpen(): error \(error)")
-                    emitter(.error(error))
-                })
-            return Disposables.create {
-                disposable?.dispose()
-            }
-        }
+          })
+          .subscribe(onCompleted: {
+            observer.onCompleted()
+          }, onError: { error in
+            observer.onError(error)
+          })
+      }
     }
     
-    private func isPftpClientReady(_ identifier: String) -> Bool {
-        do {
-            let session = try self.sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                return false
+    private func waitDeviceSessionToOpen(deviceId: String, timeoutSeconds: Int, waitForDeviceDownSeconds: Int = 0) -> Completable {
+      BleLogger.trace("Wait for device session to open, timeoutSeconds: \(timeoutSeconds), waitForDeviceDownSeconds: \(waitForDeviceDownSeconds)")
+      let pollIntervalSeconds = 5
+      
+      return Completable.create { emitter in
+        var disposable: Disposable?
+        disposable = Observable<Int>.timer(RxTimeInterval.seconds(waitForDeviceDownSeconds), scheduler: MainScheduler.instance)
+          .flatMap { _ in
+            Observable<Int>.interval(RxTimeInterval.seconds(pollIntervalSeconds), scheduler: MainScheduler.instance)
+              .take(until: Observable<Int>.timer(RxTimeInterval.seconds(timeoutSeconds), scheduler: MainScheduler.instance))
+          }
+          .timeout(RxTimeInterval.seconds(timeoutSeconds), scheduler: MainScheduler.instance)
+          .subscribe(onNext: { _ in
+            if self.deviceSessionState == BleDeviceSession.DeviceSessionState.sessionOpen {
+              BleLogger.trace("Session opened, deviceId: \(deviceId)")
+              disposable?.dispose()
+              emitter(.completed)
+            } else {
+              BleLogger.trace("Waiting for device session to open, deviceId: \(deviceId), current state: \(String(describing: self.deviceSessionState))")
             }
-            return true
-        } catch _ {
-            return false
+          }, onError: { error in
+            BleLogger.trace("Timeout reached while waiting for device session to open, deviceId: \(deviceId)")
+            emitter(.error(error))
+          })
+        return Disposables.create {
+          disposable?.dispose()
         }
+      }
     }
 
     private func processAccData(
