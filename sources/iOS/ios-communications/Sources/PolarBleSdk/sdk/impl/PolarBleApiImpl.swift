@@ -2748,7 +2748,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                         }
                                         .andThen(Completable.deferred {
                                             BleLogger.trace("Waiting for device session to open after factory reset")
-                                            return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                            return self.waitDeviceSessionToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
                                         })
                                         .andThen(Observable.deferred {
                                             BleLogger.trace("Writing firmware update files: \(sortedFirmwarePackage.count)")
@@ -2783,7 +2783,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                         BleLogger.trace("Firmware update is in finalizing stage")
 
                                         BleLogger.trace("Device rebooting")
-                                        self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                        self.waitDeviceSessionToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
                                             .do(onSubscribe: {
                                                 BleLogger.trace("Waiting for device session to open after reboot with timeout: \(rebootMaxWaitTimeSeconds) seconds")
                                             })
@@ -2814,7 +2814,13 @@ extension PolarBleApiImpl: PolarBleApi  {
                                             }
                                             .flatMap { _ in
                                                 BleLogger.trace("Waiting for device session to open after factory reset with timeout: \(factoryResetMaxWaitTimeSeconds) seconds")
-                                                return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                              return self.waitDeviceSessionToOpen(
+                                                deviceId: identifier,
+                                                timeoutSeconds: Int(
+                                                  factoryResetMaxWaitTimeSeconds
+                                                ),
+                                                waitForDeviceDownSeconds: 10
+                                              )
                                                     .do(onSubscribe: {
                                                         BleLogger.trace("Waiting for device session to open post factory reset")
                                                     })
