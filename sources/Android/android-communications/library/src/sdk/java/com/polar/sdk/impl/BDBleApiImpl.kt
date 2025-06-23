@@ -3851,22 +3851,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             })
     }
 
-    private fun isPftpClientReady(identifier: String): Boolean {
-        try {
-            val session = sessionPsFtpClientReady(identifier)
-    
-            val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
-            if (client != null) {
-                return true
-            }
-    
-            return false
-        }
-        catch (error: Throwable) {
-            return false
-        }
-    }
-
     override fun deleteStoredDeviceData(identifier: String, dataType: PolarStoredDataType, until: LocalDate?): Completable {
 
         var folderPath = "/U/0"
