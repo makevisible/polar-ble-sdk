@@ -3075,12 +3075,12 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val stepsDataList = mutableListOf<Pair<Date, Int>>()
+        val stepsDataList = mutableListOf<Pair<LocalDate, Int>>()
 
         val calendar = Calendar.getInstance()
         calendar.time = fromDate
 
-        val datesList = mutableListOf<Date>()
+        val datesList = mutableListOf<LocalDate>()
 
         while (!calendar.time.after(toDate)) {
             datesList.add(calendar.time)
@@ -3117,12 +3117,12 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val distanceDataList = mutableListOf<Pair<Date, Float>>()
+        val distanceDataList = mutableListOf<Pair<LocalDate, Float>>()
 
         val calendar = Calendar.getInstance()
         calendar.time = fromDate
 
-        val datesList = mutableListOf<Date>()
+        val datesList = mutableListOf<LocalDate>()
 
         while (!calendar.time.after(toDate)) {
             datesList.add(calendar.time)
@@ -3221,12 +3221,12 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val caloriesDataList = mutableListOf<Pair<Date, Int>>()
+        val caloriesDataList = mutableListOf<Pair<LocalDate, Int>>()
 
         val calendar = Calendar.getInstance()
         calendar.time = fromDate
 
-        val datesList = mutableListOf<Date>()
+        val datesList = mutableListOf<LocalDate>()
 
         while (!calendar.time.after(toDate)) {
             datesList.add(calendar.time)
