@@ -3813,7 +3813,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }, BackpressureStrategy.BUFFER)
     }
 
-
     private fun waitDeviceSessionWithPftpToOpen(
         deviceId: String,
         timeoutSeconds: Long,
@@ -4191,15 +4190,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     Completable.fromAction { it.deviceConnecting(info) }
                         .subscribeOn(AndroidSchedulers.mainThread())
                         .subscribe()
-                }
-            }
-            DeviceSessionState.SESSION_OPEN_PARK -> {
-                callback?.let {
-                    if (session.previousState == DeviceSessionState.SESSION_OPENING || session.previousState == DeviceSessionState.SESSION_OPEN) {
-                        Completable.fromAction { it.deviceDisconnected(info) }
-                            .subscribeOn(AndroidSchedulers.mainThread())
-                            .subscribe()
-                    }
                 }
             }
             else -> {
