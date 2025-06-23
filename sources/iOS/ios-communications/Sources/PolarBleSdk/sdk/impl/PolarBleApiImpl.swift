@@ -760,7 +760,7 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
     
     func searchForDevice() -> Observable<PolarDeviceInfo> {
-        return listener.search(nil, identifiers: nil)
+        return listener.search(serviceList, identifiers: nil, fetchKnownDevices: true)
             .distinct()
             .map({ value -> PolarDeviceInfo in
                 return (value.advertisementContent.polarDeviceIdUntouched,
@@ -772,7 +772,7 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
     
     func startAutoConnectToDevice(_ rssi: Int, service: CBUUID?, polarDeviceType: String?) -> Completable {
-        return listener.search(serviceList, identifiers: nil)
+        return listener.search(serviceList, identifiers: nil, fetchKnownDevices: true)
             .filter { (sess: BleDeviceSession) -> Bool in
                 return sess.advertisementContent.medianRssi >= rssi &&
                 sess.isConnectable() &&
@@ -793,7 +793,10 @@ extension PolarBleApiImpl: PolarBleApi  {
     
     func connectToDevice(_ identifier: String) throws {
         let session = try fetchSession(identifier)
-        if  session == nil || session?.state == BleDeviceSession.DeviceSessionState.sessionClosed {
+        if  session == nil ||
+            session?.state == BleDeviceSession.DeviceSessionState.sessionClosed  ||
+            session?.state == BleDeviceSession.DeviceSessionState.sessionClosing {
+            
             if let sub = connectSubscriptions[identifier] {
                 sub.dispose()
             }
@@ -803,7 +806,7 @@ extension PolarBleApiImpl: PolarBleApi  {
 #endif
                 self.listener.openSessionDirect(session!)
             } else {
-                connectSubscriptions[identifier] = listener.search(serviceList, identifiers: nil)
+                connectSubscriptions[identifier] = listener.search(serviceList, identifiers: nil, fetchKnownDevices: true)
                     .observe(on: scheduler)
                     .filter { (sess: BleDeviceSession) -> Bool in
                         return identifier.contains("-") ? sess.address.uuidString == identifier : sess.advertisementContent.polarDeviceIdUntouched == identifier
@@ -1436,15 +1439,13 @@ extension PolarBleApiImpl: PolarBleApi  {
                   var polarHrData: PolarOfflineRecordingData?
                   var polarTemperatureData: PolarOfflineRecordingData?
                   var polarSkinTemperatureData: PolarOfflineRecordingData?
+                  var polarEmptyData: PolarOfflineRecordingData?
 
                   let lastTimestamp: UInt64 = 0
 
                   let processingObservable = subRecordingCountObservable
                       .flatMap { count -> Observable<PolarOfflineRecordingData> in
-                          let notificationResult = client.sendNotification(
-                              Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue,
-                              parameters: nil
-                          )
+                          let notificationResult = self.sendInitializationAndStartSyncNotifications(client: client)
                           
                           return notificationResult
                               .andThen(
@@ -1511,6 +1512,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                   case let skinTemperatureData as SkinTemperatureData:
                                                       polarSkinTemperatureData = self.processSkinTemperatureData(skinTemperatureData, polarSkinTemperatureData, offlineRecordingData)
                                                       observer.onNext(polarSkinTemperatureData!)
+                                                  case let emptyData as EmptyData:
+                                                      polarEmptyData = self.processEmptyData(offlineRecordingData)
+                                                      observer.onNext(polarEmptyData!)
                                                   default:
                                                       observer.onError(PolarErrors.polarOfflineRecordingError(description: "GetOfflineRecording failed. Data type is not supported."))
                                                       return
@@ -1534,7 +1538,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                       .asCompletable()
 
                   _ = processingObservable.andThen(Single.deferred {
-                      let offlineDataObjects = [polarAccData, polarGyroData, polarMagData, polarPpgData, polarPpiData, polarHrData, polarTemperatureData, polarSkinTemperatureData]
+                      let offlineDataObjects = [polarAccData, polarGyroData, polarMagData, polarPpgData, polarPpiData, polarHrData, polarTemperatureData, polarSkinTemperatureData, polarEmptyData]
 
                       for dataObject in offlineDataObjects {
                           if let data = dataObject {
@@ -1545,10 +1549,23 @@ extension PolarBleApiImpl: PolarBleApi  {
                   })
                   .subscribe(
                       onSuccess: { data in
+                          client.sendNotification(
+                            Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
+                            parameters: nil
+                          ).subscribe()
+                          
                           single(.success(data))
                       },
                       onFailure: { error in
+                          client.sendNotification(
+                            Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
+                            parameters: nil
+                          ).subscribe()
+                          
                           single(.failure(error))
+                      },
+                      onDisposed: {
+                          self.sendTerminateAndStopSyncNotifications(client: client)
                       }
                   )
 
@@ -1573,7 +1590,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let directoryPath = entry.path.components(separatedBy: "/").dropLast().joined(separator: "/") + "/"
                 let fileType = try self.mapDeviceDataTypeToOfflineRecordingFileName(type: entry.type)
                 operation.path = directoryPath
-                
+                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 _ = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
@@ -1587,6 +1604,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                         },
                         onFailure: { error in
                             single(.failure(error))
+                        },
+                        onDisposed: {
+                            self.sendTerminateAndStopSyncNotifications(client: client)
                         }
                     )
             } catch {
@@ -1608,9 +1628,14 @@ extension PolarBleApiImpl: PolarBleApi  {
                 var operation = Protocol_PbPFtpOperation()
                 operation.command = Protocol_PbPFtpOperation.Command.get
                 let directoryPath = entry.path.components(separatedBy: "/").dropLast().joined(separator: "/") + "/"
-                let type = entry.path.components(separatedBy: "/").last?.replacingOccurrences(of: "[0-9]+.REC", with: "", options: .regularExpression)
+                let type = entry.path.components(separatedBy: "/").last?.replacingOccurrences(of: "[0-9]+.REC", with: "", options: .regularExpression).replacingOccurrences(of: " ", with: "")
                 operation.path = directoryPath
                 
+                var parentDir = ""
+                if let lastSlashIndex = entry.path.dropLast().lastIndex(of: "/") {
+                    parentDir = String(entry.path[...lastSlashIndex])
+                }
+                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 _ = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
@@ -1619,7 +1644,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 var records = [String]()
                                 for entry in directory.entries {
                                     if entry.name.contains(type ?? "") {
-                                        records.append(entry.name)
+                                        records.append(parentDir + entry.name)
                                     }
                                 }
                                 single(.success(records))
@@ -1629,6 +1654,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                         },
                         onFailure: { error in
                             single(.failure(error))
+                        },
+                        onDisposed: {
+                            self.sendTerminateAndStopSyncNotifications(client: client)
                         }
                     )
             } catch {
@@ -1702,7 +1730,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             let request = try operation.serializedData()
 
             BleLogger.trace("Offline record get. Device: $identifier Path: \(entry.path) Secret used: \(secret != nil)")
-            return client.sendNotification(Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue, parameters: nil)
+            return sendInitializationAndStartSyncNotifications(client: client)
                 .andThen(client.request(request))
                 .map { data -> OfflineRecordingData<Any> in
                     var pmdSecret: PmdSecret? = nil
@@ -1748,12 +1776,14 @@ extension PolarBleApiImpl: PolarBleApi  {
                         return PolarOfflineRecordingData.temperatureOfflineRecordingData(
                             (offlineRecData.data as! TemperatureData).mapToPolarData(),
                             startTime: offlineRecData.startTime)
+                    case is EmptyData:
+                        return PolarOfflineRecordingData.emptyData(startTime: offlineRecData.startTime)
                     default:
                         throw PolarErrors.polarOfflineRecordingError(description: "GetOfflineRecording failed. Data type is not supported.")
                     }
                 }
                 .flatMap { polarOfflineData -> Single<PolarOfflineRecordingData> in
-                    return client.sendNotification(Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue, parameters: nil)
+                    return self.sendTerminateAndStopSyncNotifications(client: client)
                         .andThen(Single.just(polarOfflineData))
                 }
         } catch let err {
@@ -1762,227 +1792,49 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
     
     func removeOfflineRecord(_ identifier: String, entry: PolarOfflineRecordingEntry) -> Completable {
-        BleLogger.trace("removeOfflineRecord: remove offline, record device \(identifier) path \(entry.path)")
+        BleLogger.trace("Remove offline record. Device: \(identifier) Path: \(entry.path)")
         do {
             let session = try sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+            guard session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) is BlePsFtpClient else {
                 return Completable.error(PolarErrors.serviceNotFound)
             }
             guard .sagRfc2FileSystem == BlePolarDeviceCapabilitiesUtility.fileSystemType(session.advertisementContent.polarDeviceType) else {
                 return Completable.error(PolarErrors.operationNotSupported)
             }
-          
-        
-            return getSubRecordingCount(identifier: identifier, entry: entry)
-                .flatMapCompletable { count -> Completable in
-                    if count == 0 {
-                        /// If sub recording count is 0, then it device is using old format (single recording file).
-                        BleLogger.trace("removeOfflineRecord: removing old format recording file (sub recording count is 0)")
-                        return self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/")
-                    } else {
-                        /// Otherwise, device is using new format (split recording files).
-                        BleLogger.trace("removeOfflineRecord: removing split recording files (sub recording count is \(count))")
-                        return Observable.range(start: 0, count: count)
-                            .concatMap { subRecordingIndex -> Completable in
-                                let recordingPath = entry.path.replacingOccurrences(of: "\\d(?=\\.REC$)", with: "\(subRecordingIndex)", options: .regularExpression)
-                                
-                                var removeOperation = Protocol_PbPFtpOperation()
-                                removeOperation.command = .remove
-                                removeOperation.path = recordingPath
-                                
-                                BleLogger.trace("removeOfflineRecord: removing sub recording file \(recordingPath)")
-                                
-                                let request = try removeOperation.serializedData()
-                                return client.request(request).asCompletable()
-                                    .do(
-                                        onError: { error in
-                                            BleLogger.error("removeOfflineRecord: failed to remove sub recording file \(recordingPath), \(error)")
-                                        },
-                                        onCompleted: {
-                                            BleLogger.trace("removeOfflineRecord: removed sub recording file \(recordingPath)")
-                                        }
-                                    )
-                            }
-                            .asCompletable()
-                            .andThen(Completable.deferred {
-                                BleLogger.trace("removeOfflineRecord: removing sub recording files completed, cleaning up parent directories")
-                                return self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/")
-                                    .do(
-                                        onError: { error in
-                                            BleLogger.error("removeOfflineRecord: failed to clean up parent directories, \(error)")
-                                        },
-                                        onCompleted: {
-                                            BleLogger.trace("removeOfflineRecord: finished cleaning up parent directories")
-                                        }
-                                    )
-                            })
-                    }
-                }
-        } catch let err {
-            return Completable.error(err)
-        }
-    }
 
-    private func removeOfflineFilesRecursively(_ client: BlePsFtpClient, _ deletePath: String, deleteIfMatchesRegex: String? = nil) -> Completable {
-        do {
-            BleLogger.trace("removeOfflineFilesRecursively: remove offline files from path \(deletePath)")
-            if(deleteIfMatchesRegex != nil) {
-                guard deletePath.contains(deleteIfMatchesRegex!) else {
-                    BleLogger.trace("removeOfflineFilesRecursively: not valid offline recording path to delete $deletePath")
-                    return Completable.error(PolarErrors.polarOfflineRecordingError(description:  "Not valid offline recording path to delete \(deletePath)"))
-                }
+            return self.getSubRecordings(identifier: identifier, entry: entry).flatMapCompletable { subrecords in
+                return self.removeMultipleFiles(identifier: identifier, filePaths: subrecords)
+                    .andThen( {
+                        let indices = entry.path.findIndices(lookable: "/")
+                        var directories: [String] = []
+                        var indexCount = 1
+                        var currentDir = String(entry.path[...indices[indices.count-indexCount]])
+                        while (currentDir != "/U/0/") {
+                            directories.append(currentDir)
+                            indexCount+=1
+                            currentDir = String(entry.path[...indices[indices.count-indexCount]])
+                        }
+                        return Single.just(directories)
+                    }().flatMapCompletable { directories in
+                            Observable.from(directories)
+                                .enumerated()
+                                .concatMap { directory in
+                                    return self.deleteDataDirectory(identifier: identifier, directoryPath: directory.element)
+                                }.asCompletable()
+                    })
             }
-            
-            var parentDir: String = ""
-            
-            if (deletePath.last == "/") {
-                if let lastSlashIndex = deletePath.dropLast().lastIndex(of: "/") {
-                    parentDir = String(deletePath[...lastSlashIndex])
-                }
-            } else {
-                if let lastSlashIndex = deletePath.lastIndex(of: "/") {
-                    parentDir = String(deletePath[...lastSlashIndex])
-                }
-            }
-            
-            let fileName = String(deletePath.split(separator: "/").last ?? "")
-            BleLogger.trace("removeOfflineFilesRecursively: parent directory \(parentDir), fileName \(fileName)")
-
-            var operation = Protocol_PbPFtpOperation()
-            operation.command = .get
-            operation.path = parentDir
-            let request = try operation.serializedData()
-            
-            return client.request(request)
-                .flatMapCompletable { content -> Completable in
-                    do {
-                        let parentDirEntries = try Protocol_PbPFtpDirectory(serializedData: content as Data)
-                        let isParentDirValid: Bool
-                        if let regex = deleteIfMatchesRegex {
-                            isParentDirValid = parentDir.contains(regex)
-                        } else {
-                            isParentDirValid = true
-                        }
-
-                        let parentDirContainsOtherFiles = parentDirEntries.entries.count > 1
-                        BleLogger.trace("removeOfflineFilesRecursively: parentDirContainsOtherFiles \(parentDirContainsOtherFiles)")
-                        
-                        BleLogger.trace("removeOfflineFilesRecursively: isParentDirValid \(isParentDirValid), parentDirEntries count \(parentDirEntries.entries.count)")
-                        
-                        parentDirEntries.entries.forEach { entry in
-                            BleLogger.trace("removeOfflineFilesRecursively: parentDirEntries: \(entry.name)")
-                        }
-
-                        if !parentDirContainsOtherFiles && isParentDirValid {
-                            // It is safe to remove the parent dir
-                            BleLogger.trace("removeOfflineFilesRecursively: call removeOfflineFilesRecursively for parent directory \(parentDir)")
-                            return self.removeOfflineFilesRecursively(client, parentDir, deleteIfMatchesRegex: deleteIfMatchesRegex)
-                        } else {
-                            BleLogger.trace("removeOfflineFilesRecursively: Remove offline recording from the path \(deletePath)")
-                            var removeOperation = Protocol_PbPFtpOperation()
-                            removeOperation.command = .remove
-                            removeOperation.path = deletePath
-                            BleLogger.trace("removeOfflineFilesRecursively: removing file \(deletePath)")
-                            let request = try removeOperation.serializedData()
-                            return client.request(request).asCompletable()
-                                .do(
-                                    onError: { error in
-                                        BleLogger.error("removeOfflineFilesRecursively: failed to remove file \(deletePath), \(error)")
-                                    },
-                                    onCompleted: {
-                                        BleLogger.trace("removeOfflineFilesRecursively: removed file \(deletePath)")
-                                    }
-                                )
-                        }
-                    } catch {
-                        return Completable.error(PolarErrors.messageDecodeFailed)
-                    }
-                }
         } catch let err {
             return Completable.error(err)
         }
     }
     
     func removeOfflineRecords(_ identifier: String, entry: PolarOfflineRecordingEntry) -> Single<Bool> {
-        
         BleLogger.trace("Remove offline record. Device: \(identifier) Path: \(entry.path)")
-        do {
-            let session = try sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                return Single.error(PolarErrors.serviceNotFound)
-            }
-            guard .sagRfc2FileSystem == BlePolarDeviceCapabilitiesUtility.fileSystemType(session.advertisementContent.polarDeviceType) else {
-                return Single.error(PolarErrors.operationNotSupported)
-            }
-            
-            return removeOfflineSubrecordings(identifier, entry: entry)
-        } catch let err {
-            return Single.error(err)
+        return Single<Bool>.create{ emitter in
+            return self.removeOfflineRecord(identifier, entry: entry).subscribe()
         }
     }
-        
-    private func removeOfflineSubrecordings(_ identifier: String, entry: PolarOfflineRecordingEntry) -> Single<Bool> {
-        BleLogger.trace("Completely remove offline record with all its subrecordings. Device: \(identifier). Path: \(entry.path).")
-        do {
-            let session = try sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                return Single.error(PolarErrors.serviceNotFound)
-            }
-            guard .sagRfc2FileSystem == BlePolarDeviceCapabilitiesUtility.fileSystemType(session.advertisementContent.polarDeviceType) else {
-                return Single.error(PolarErrors.operationNotSupported)
-            }
-            let fileType = try? mapDeviceDataTypeToOfflineRecordingFileName(type: entry.type)
-            
-            return self.getSubRecordings(identifier: identifier, entry: entry).flatMap { subrecords -> Single<Bool> in
-                return Single.create { singleEmitter in
-                    var disposed = false
-                    defer {
-                        if !disposed {
-                            singleEmitter(.success(true))
-                        }
-                    }
-                    var idx = 0
-                    for record in subrecords {
-                        idx+=1
-                        var deviceType = ""
-                        do {
-                            do {
-                                deviceType = try self.mapDeviceDataTypeToOfflineRecordingFileName(type: entry.type)
-                            } catch let err {
-                                BleLogger.error("Error in finding device type for subrecord \(record).")
-                            }
-                            
-                            let matches = record.matches(deviceType)
-                            if (matches) {
-                                let indices = entry.path.findIndices(lookable: "/")
-                                let pathPrefix =  String(entry.path[...indices[indices.count-1]])
-                                let deletePath = pathPrefix + record
-                                self.removeSingleFile(identifier: identifier, filePath: deletePath).subscribe (
-                                    onSuccess: {_ in
-                                        if idx == subrecords.count {
-                                            self.removeOfflineFilesRecursively(client, entry.path, deleteIfMatchesRegex: "/\\d{8}/").subscribe(
-                                                onCompleted: {
-                                                    return singleEmitter(.success(true))
-                                                }
-                                            )
-                                        }
-                                    },
-                                    onError: { error in
-                                        singleEmitter(.failure(error))
-                                    }
-                                )
-                            }
-                        }
-                        
-                    }
-                    return Disposables.create()
-                }
-            }
-        } catch let err {
-            return Single.error(err)
-        }
-    }
-    
+
     func mapDeviceDataTypeToOfflineRecordingFileName(type: PolarDeviceDataType) throws -> String {
          switch type {
              case .acc: return "ACC"
@@ -2015,15 +1867,34 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
     
     func stopOfflineRecording(_ identifier: String, feature: PolarDeviceDataType) -> Completable {
-        do {
-            let session = try sessionPmdClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePmdClient.PMD_SERVICE) as? BlePmdClient else { return Completable.error(PolarErrors.serviceNotFound) }
-            BleLogger.trace("Stop offline recording. Feature: \(feature) Device \(identifier)")
-            return client.stopMeasurement( PolarDataUtils.mapToPmdClientMeasurementType(from:feature))
-        } catch let err {
-            return Completable.error(err)
-        }
-    }
+            do {
+                    let session = try sessionPmdClientReady(identifier)
+                    guard let client = session.fetchGattClient(BlePmdClient.PMD_SERVICE) as? BlePmdClient else {
+                        return Completable.error(PolarErrors.serviceNotFound)
+                    }
+                    BleLogger.trace("Stop offline recording. Feature: \(feature) Device \(identifier)")
+
+                    let measurementType = PolarDataUtils.mapToPmdClientMeasurementType(from: feature)
+                    let scheduler = ConcurrentDispatchQueueScheduler(qos: .background)
+
+                    return client.stopMeasurement(measurementType)
+                        .andThen(
+                            Observable<Int>.interval(.milliseconds(500), scheduler: scheduler)
+                                .flatMap { _ in client.readMeasurementStatus() }
+                                .filter { statusArray in
+                                    guard let status = statusArray.first(where: { $0.0 == measurementType }) else {
+                                        return true
+                                    }
+                                    return status.1 == .no_measurement_active
+                                }
+                                .take(1)
+                                .ignoreElements()
+                                .asCompletable()
+                        )
+                } catch let err {
+                    return Completable.error(err)
+                }
+            }
     
     func setOfflineRecordingTrigger(_ identifier: String, trigger: PolarOfflineRecordingTrigger, secret: PolarRecordingSecret?) -> Completable {
         do {
@@ -2105,6 +1976,25 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                     return deviceData
                 }
+        } catch let err {
+            return Single.error(err)
+        }
+    }
+    
+    func getAvailableHRServiceDataTypes(identifier: String) -> Single<Set<PolarDeviceDataType>> {
+        do {
+            let session = try sessionServiceReady(identifier, service: BleHrClient.HR_SERVICE)
+            let bleHrClient = session.fetchGattClient(BleHrClient.HR_SERVICE) as? BleHrClient
+            
+            return Single.create { observer in
+                var deviceData: Set<PolarDeviceDataType> = Set()
+                if let bleHrClient = bleHrClient, bleHrClient.isServiceDiscovered() == true {
+                    deviceData.insert(PolarDeviceDataType.hr)
+                }
+                observer(.success(deviceData))
+                return Disposables.create()
+                            }
+            
         } catch let err {
             return Single.error(err)
         }
@@ -2267,6 +2157,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             let session = try sessionFtpClientReady(identifier)
             let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as! BlePsFtpClient
             let fsType = BlePolarDeviceCapabilitiesUtility.fileSystemType(session.advertisementContent.polarDeviceType)
+            self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
             if fsType == .sagRfc2FileSystem {
                 return fetchRecursive("/U/0/", client: client, condition: { (entry) -> Bool in
                     return entry.matches("^([0-9]{8})(\\/)") ||
@@ -2301,6 +2192,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                     return Observable.error(PolarErrors.deviceError(description: "\(err)"))
                 })
             }
+            self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
             throw PolarErrors.operationNotSupported
         } catch let err {
             return Observable.error(err)
@@ -2325,14 +2217,17 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let data = Data([sdkModeLedByte, ppiModeLedByte])
                 let inputStream = InputStream(data: data)
 
+                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                             completable(.error(error))
                         }, onCompleted: {
                             completable(.completed)
-                        })
-
+                        }, onDisposed: {
+                            self.sendTerminateAndStopSyncNotifications(client: client)
+                        }
+                    )
                 completable(.completed)
             } catch let err {
                 completable(.error(err))
@@ -2442,14 +2337,17 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let inputStream = InputStream(data: data)
 
                 BleLogger.trace("Sensor datalog set. Device: \(identifier) Path: \(operation.path)")
-
+                self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                           completable(.error(error))
                       }, onCompleted: {
                           completable(.completed)
-                      })
+                      }, onDisposed: {
+                          self.sendTerminateAndStopSyncNotifications(client: client)
+                      }
+                    )
                 completable(.completed)
             } catch let err {
                 completable(.error(err))
@@ -2480,6 +2378,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let ftuData = Data(ftuConfigProto)
                 let ftuInputStream = InputStream(data: ftuData)
 
+                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 client.write(ftuProto as NSData, data: ftuInputStream)
                     .subscribe(
                         onError: { error in
@@ -2547,6 +2446,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 BleLogger.error("Error processing User ID for device: \(identifier) - \(error.localizedDescription)")
                                 completable(.error(error))
                             }
+                        },
+                        onDisposed: {
+                            self.sendTerminateAndStopSyncNotifications(client: client)
                         }
                     )
 
@@ -2576,11 +2478,13 @@ extension PolarBleApiImpl: PolarBleApi  {
             let request = try operation.serializedData()
 
             self.logMessage("Check if FTU has been done to device \(identifier)")
-            return client.sendNotification(Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue, parameters: nil)
+            return self.sendInitializationAndStartSyncNotifications(client: client)
                 .andThen(client.request(request))
                 .map { data -> Bool in
                     return try Data_PbUserIdentifier(serializedData: data as Data).hasMasterIdentifier
-                }
+                }.do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                })
         } catch let err {
             return Single.error(err)
         }
@@ -2695,7 +2599,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                 }
                 return Disposables.create()
-            }
+            }.do(onDispose: {
+                self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
+            })
         } catch {
             BleLogger.error("Error during firmware update check: \(error)")
             return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "Error: \(error.localizedDescription)"))
@@ -2721,7 +2627,6 @@ extension PolarBleApiImpl: PolarBleApi  {
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.just(FirmwareUpdateStatus.fwUpdateFailed(details: "No BlePsFtpClient available"))
             }
-            self.sendInitializationAndStartSyncNotifications(client: client)
 
             guard let deviceInfo = PolarFirmwareUpdateUtils.readDeviceFirmwareInfo(client: client, deviceId: identifier) else {
                 return Observable.just(FirmwareUpdateStatus.fwUpdateFailed(details: "Failed to read device firmware info"))
@@ -2803,6 +2708,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                         let automaticReconnection = self.automaticReconnection
                         self.automaticReconnection = true
                         
+                        self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                         backupManager.backupDevice()
                             .asObservable()
                             .flatMap { content -> Observable<FirmwareUpdateStatus> in
@@ -2970,7 +2876,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                BleLogger.error("Error setting local time: \(error)")
                                             },
                                             onDisposed: {
-                                               self.sendTerminateAndStopSyncNotifications(client: client)
+                                                self.sendTerminateAndStopSyncNotifications(client: client)
                                                observer.onCompleted()
                                            }
                                        )
@@ -3013,7 +2919,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 }
             }
 
-            return Observable.from(datesList)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(Observable.from(datesList)
                 .flatMap { date -> Single<(Date, Int)> in
                     return PolarActivityUtils.readStepsFromDayDirectory(client: client, date: date)
                         .map { steps -> (Date, Int) in
@@ -3027,6 +2934,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                     return stepsDataList.map { PolarStepsData(date: $0.0, steps: $0.1) }
                 }
+            ).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                })
         } catch {
             return Single.error(error)
         }
@@ -3055,7 +2965,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 }
             }
 
-            return Observable.from(datesList)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(Observable.from(datesList)
                 .flatMap { date -> Single<(Date, Float)> in
                     return PolarActivityUtils.readDistanceFromDayDirectory(client: client, date: date)
                         .map { distance -> (Date, Float) in
@@ -3068,7 +2979,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                         distanceDataList.append(pair)
                     }
                     return distanceDataList.map { PolarDistanceData(date: $0.0, distanceMeters: $0.1) }
-                }
+                }).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                })
         } catch {
             return Single.error(error)
         }
@@ -3081,7 +2994,11 @@ extension PolarBleApiImpl: PolarBleApi  {
                 return Single.error(PolarErrors.serviceNotFound)
             }
 
-            return PolarAutomaticSamplesUtils.read247HrSamples(client: client, fromDate: fromDate, toDate: toDate)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(PolarAutomaticSamplesUtils.read247HrSamples(client: client, fromDate: fromDate, toDate: toDate))
+                .do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    })
         } catch {
             return Single.error(error)
         }
@@ -3094,7 +3011,11 @@ extension PolarBleApiImpl: PolarBleApi  {
                 return Single.error(PolarErrors.serviceNotFound)
             }
 
-            return PolarAutomaticSamplesUtils.read247PPiSamples(client: client, fromDate: fromDate, toDate: toDate)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(PolarAutomaticSamplesUtils.read247PPiSamples(client: client, fromDate: fromDate, toDate: toDate))
+                .do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                })
         } catch {
             return Single.error(error)
         }
@@ -3119,7 +3040,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate)!
             }
 
-            return Observable.from(datesList)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(Observable.from(datesList)
                 .flatMap { date in
                     PolarNightlyRechargeUtils.readNightlyRechargeData(client: client, date: date)
                         .asObservable()
@@ -3130,7 +3052,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .toArray()
                 .flatMap { _ in
                     Single.just(nightlyRechargeDataList)
-                }
+                }).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client)
+                })
         } catch {
             return Single.error(error)
         }
@@ -3156,7 +3080,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                }
            }
 
-           return Observable.from(datesList)
+           return sendInitializationAndStartSyncNotifications(client: client)
+               .andThen(Observable.from(datesList)
                .flatMap { date -> Single<(Date, Int)> in
                    return PolarActivityUtils.readCaloriesFromDayDirectory(client: client, date: date, caloriesType: caloriesType)
                        .map { calories -> (Date, Int) in
@@ -3168,7 +3093,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                    return pairs.map { (date, calories) in
                        PolarCaloriesData(date: date, calories: calories)
                    }
-               }
+               }).do(onDispose: {
+                   self.sendTerminateAndStopSyncNotifications(client: client)
+               })
        } catch {
            return Single.error(error)
        }
@@ -3193,7 +3120,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate)!
             }
 
-            return Observable.from(datesList)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(Observable.from(datesList)
                 .flatMap { date in
                     PolarSkinTemperatureUtils.readSkinTemperatureData(client: client, date: date)
                         .asObservable()
@@ -3204,7 +3132,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .toArray()
                 .flatMap { _ in
                     Single.just(skinTemperatureDataList)
-                }
+                }).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
+                })
         } catch {
             return Single.error(error)
         }
@@ -3285,7 +3215,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                 }
             }
 
-            return Observable.from(datesList)
+            return sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(Observable.from(datesList)
                 .flatMap { date -> Single<(Date, PolarActiveTimeData)> in
                     return PolarActivityUtils.readActiveTimeFromDayDirectory(client: client, date: date)
                         .map { activeTime -> (Date, PolarActiveTimeData) in
@@ -3307,7 +3238,10 @@ extension PolarBleApiImpl: PolarBleApi  {
                             timeIntermittentVigorousActivity: activeTimeData.timeIntermittentVigorousActivity
                         )
                     }
-                }
+                }.do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
+                })
+            )
         } catch {
             return Single.error(error)
         }
@@ -3333,14 +3267,17 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let inputStream = InputStream(data: data)
 
                 BleLogger.trace("Polar user device settings set. Device: \(identifier) Path: \(operation.path)")
-
+                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
-                          completable(.error(error))
+                            completable(.error(error))
                       }, onCompleted: {
                           completable(.completed)
-                      })
+                      }, onDisposed: {
+                          self.sendTerminateAndStopSyncNotifications(client: client)
+                      }
+                    )
                 completable(.completed)
             } catch let err {
                 
@@ -3358,10 +3295,15 @@ extension PolarBleApiImpl: PolarBleApi  {
                 return Single.error(PolarErrors.serviceNotFound)
             }
 
-            return PolarUserDeviceSettingsUtils.getUserDeviceSettings(client: client)
-                .map { settings -> PolarUserDeviceSettings.PolarUserDeviceSettingsResult in
-                    return settings
-                }
+            return self.sendInitializationAndStartSyncNotifications(client: client)
+                .andThen(
+                    PolarUserDeviceSettingsUtils.getUserDeviceSettings(client: client)
+                    .map { settings -> PolarUserDeviceSettings.PolarUserDeviceSettingsResult in
+                        return settings
+                    }
+                ).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
+                })
         } catch {
             return Single.error(error)
         }
@@ -3369,23 +3311,28 @@ extension PolarBleApiImpl: PolarBleApi  {
 
     func deleteStoredDeviceData(_ identifier: String, dataType: PolarStoredDataType.StoredDataType, until: Date?) -> Completable {
         
-        var dataDeletionStats = DataDeletionStats()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
         let entryPattern = dataType.rawValue
-        
+        var condition: (_ p: String) -> Bool
+        var folderPath: String = "/U/0"
+
         switch dataType {
         case .AUTO_SAMPLE:
-            return deleteListedFilesByType(identifier: identifier, dataDeletionStats: dataDeletionStats, entryPath: "/U/0/AUTOS", until: until!, dataType, condition:{ (entry) -> Bool in
+            folderPath = "/U/0/AUTOS"
+            condition = { (entry) -> Bool in
                 entry.contains("^(\\d{8})(/)") ||
                 entry == "\(entryPattern)/" ||
                 entry.contains(".BPB")
-            })
+            }
         case .SDLOGS:
-            return deleteListedFilesByType(identifier: identifier, dataDeletionStats: dataDeletionStats, entryPath: "/SDLOGS", until: until!, dataType, condition:{ (entry) -> Bool in
+            folderPath =  "/SDLOGS"
+            condition = { (entry) -> Bool in
                 entry.contains("^(\\d{8})(/)") ||
                 entry == "\(entryPattern)/" ||
                 entry.contains(".SLG") ||
                 entry.contains(".TXT")
-            })
+            }
         case .ACTIVITY:
             fallthrough
         case .DAILY_SUMMARY:
@@ -3399,20 +3346,78 @@ extension PolarBleApiImpl: PolarBleApi  {
         case .SKINTEMP:
             fallthrough
         case .SLEEP_SCORE:
-            if (until != nil) {
-                return deleteListedFilesByType(identifier: identifier, dataDeletionStats: dataDeletionStats, entryPath: "/U/0/", until: until!, dataType, condition:{ (entry) -> Bool in
-                             return entry.matches("^([0-9]{8})(\\/)") ||
-                                 entry == "\(entryPattern)/" ||
-                                 entry.contains(".BPB") &&
-                                 !entry.contains("USERID.BPB") &&
-                                 !entry.contains("HIST")
-                         })
-            } else {
-                return Completable.error(PolarErrors.dateTimeFormatFailed(description: "Value for until date cannot be empty."))
+            folderPath = "/U/0/"
+            condition = { (entry) -> Bool in
+                return entry.matches("^([0-9]{8})(\\/)") &&
+                entry == "\(formatter.string(from: (until!)))/" ||
+                entry == "\(entryPattern)/" ||
+                entry.contains(".BPB") &&
+                !entry.contains("USERID.BPB") &&
+                !entry.contains("HIST")
             }
         case .UNDEFINED:
             return Completable.empty()
         }
+        
+        return listFiles(identifier: identifier, folderPath: folderPath, condition: condition)
+            .flatMap { [self] (file) -> Single<String> in
+                switch dataType {
+                case .AUTO_SAMPLE:
+                    BleLogger.trace("Delete file \(file) from /U/0/AUTOS/ folder.")
+                    return checkAutoSampleFile(identifier: identifier, filePath: file, until: until!)
+                        .flatMap { [self] canDelete in
+                            if canDelete {
+                                return removeSingleFile(identifier: identifier, filePath: file)
+                            } else {
+                                return Single.just(NSData())
+                            }
+                        }.asCompletable().andThen(Single.just(file))
+                case .SDLOGS:
+                    BleLogger.trace("Delete file \(file) from SDLOGS folder.")
+                    return removeSingleFile(identifier: identifier, filePath: file).asCompletable().andThen(Single.just(file))
+                case .ACTIVITY:
+                    fallthrough
+                case .DAILY_SUMMARY:
+                    fallthrough
+                case .NIGHTLY_RECOVERY:
+                    fallthrough
+                case .SLEEP:
+                    fallthrough
+                case .SKIN_CONTACT_CHANGES:
+                    fallthrough
+                case .SKINTEMP:
+                    fallthrough
+                case .SLEEP_SCORE:
+                    BleLogger.trace("Delete file \(file) from /U/0 directory , file type: \(dataType.rawValue) from device \(identifier).")
+                        return removeSingleFile(identifier: identifier, filePath: file).asCompletable().andThen(Single.just(file))
+                case .UNDEFINED:
+                    BleLogger.trace("User selected \(dataType.rawValue). Do nothing.")
+                    return Single.just("")
+                }
+            }.toArray()
+            .flatMap({ files in
+                var deletedfiles = files
+                deletedfiles.removeAll { $0 == "" }
+                var directories: [String] = []
+                if (!deletedfiles.isEmpty) {
+                    let indices = deletedfiles.first!.findIndices(lookable: "/")
+                    var indexCount = 1
+                    var currentDir = String(deletedfiles.first![...indices[indices.count-indexCount]])
+                    while (currentDir != "/U/0/") {
+                        directories.append(currentDir)
+                        indexCount+=1
+                        currentDir = String(deletedfiles.first![...indices[indices.count-indexCount]])
+                    }
+                }
+                return Single.just(directories)
+            }).asObservable()
+            .flatMap( { directories in
+                Observable.from(directories)
+                    .enumerated()
+                    .concatMap { directory in
+                        return self.deleteDataDirectory(identifier: identifier, directoryPath: directory.element)
+                    }
+            }).asCompletable()
     }
     
     func deleteDeviceDateFolders(_ identifier: String, fromDate: Date?, toDate: Date?) -> Completable {
@@ -3482,78 +3487,205 @@ extension PolarBleApiImpl: PolarBleApi  {
         })
     }
     
-    private func deleteListedFilesByType(identifier: String, dataDeletionStats: DataDeletionStats, entryPath: String, until: Date, _ dataType: PolarStoredDataType.StoredDataType, condition: @escaping (_ p: String) -> Bool) -> Completable {
-      
-        listFiles(identifier: identifier, dataDeletionStats: dataDeletionStats, folderPath: entryPath, condition: condition)
-            .map{ [self] item -> () in
-                dataDeletionStats.fileDeletionMap[item] = false
-            }
-            .asObservable()
-            .subscribe(
-                onError: { error in
-                    BleLogger.error("Failed to delete files.")
-                    },
-                onCompleted: { [self] in
-                    switch dataType {
-                    case .AUTO_SAMPLE:
-                        BleLogger.trace("Starting to delete files from /U/0/AUTOS/ folder.")
-                        checkAutoSampleFiles(identifier: identifier, dataDeletionStats: dataDeletionStats).subscribe(
-                            onCompleted: {
-                                deleteAutoSampleFiles(identifier: identifier, dataDeletionStats: dataDeletionStats)
-                            }
-                        )
-                    case .SDLOGS:
-                        BleLogger.trace("Starting to delete files from SDLOGS folder.")
-                        deleteSdLogFiles(identifier: identifier, dataDeletionStats: dataDeletionStats)
-                    case .ACTIVITY:
-                        fallthrough
-                    case .DAILY_SUMMARY:
-                        fallthrough
-                    case .NIGHTLY_RECOVERY:
-                        fallthrough
-                    case .SLEEP:
-                        fallthrough
-                    case .SKIN_CONTACT_CHANGES:
-                        fallthrough
-                    case .SKINTEMP:
-                        fallthrough
-                    case .SLEEP_SCORE:
-                        BleLogger.trace("Starting to delete files from /U/0 directory, file type: " + dataType.rawValue)
-                        deleteDataDirectories(identifier: identifier, until: until, dataDeletionStats: dataDeletionStats)
-                    case .UNDEFINED:
-                        BleLogger.trace("User selected \(dataType.rawValue). Do nothing.")
-                    }
+    func getTrainingSessionReferences(
+        identifier: String,
+        fromDate: Date? = nil,
+        toDate: Date? = nil
+    ) -> Observable<PolarTrainingSessionReference> {
+        return Observable.create { emitter in
+            do {
+                let session = try self.sessionFtpClientReady(identifier)
+                guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                    emitter.onError(PolarErrors.serviceNotFound)
+                    return Disposables.create()
                 }
-            )
+
+                return PolarTrainingSessionUtils.getTrainingSessionReferences(
+                    client: client,
+                    fromDate: fromDate,
+                    toDate: toDate
+                )
+                .subscribe(
+                    onNext: { ref in emitter.onNext(ref) },
+                    onError: { error in emitter.onError(error) },
+                    onCompleted: { emitter.onCompleted() }
+                )
+
+            } catch {
+                emitter.onError(error)
+            }
+
+            return Disposables.create()
+        }
+    }
+
+    func getTrainingSession(
+        identifier: String,
+        trainingSessionReference: PolarTrainingSessionReference
+    ) -> Single<PolarTrainingSession> {
         
-        
-        while(!dataDeletionStats.deleteOpCompleted.get()){
-            Thread.sleep(forTimeInterval: 0.5);
+        var bleClient: BlePsFtpClient
+        do {
+            let session = try self.sessionFtpClientReady(identifier)
+            bleClient = (session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient)!
+        } catch let error {
+            BleLogger.error("Failed to fetch training session: \(error)")
+            return Single<PolarTrainingSession>.error(error)
         }
         
-        return Completable.empty()
+        return self.sendInitializationAndStartSyncNotifications(client: bleClient)
+            .andThen(
+                PolarTrainingSessionUtils.readTrainingSession(
+                    client: bleClient,
+                    reference: trainingSessionReference
+                ).do(onDispose: {
+                    self.sendTerminateAndStopSyncNotifications(client: bleClient).subscribe()
+                })
+            )
     }
-  
-    private func listFiles(identifier: String, dataDeletionStats: DataDeletionStats, folderPath: String = "/", condition: @escaping (_ p: String) -> Bool) -> Observable<String> {
-        
+
+    func waitForConnection(_ identifier: String) -> Completable {
+        return Completable.create { emitter in
+            let disposable = Observable.concat([
+                    Observable.just(0),
+                    Observable<Int>.interval(.milliseconds(100), scheduler: SerialDispatchQueueScheduler(qos: .utility))
+                ])
+                .compactMap { _ -> BleDeviceSession? in
+                    return try? self.fetchSession(identifier)
+                }
+                .filter { $0.state == .sessionOpen }
+                .take(1)
+                .subscribe(
+                    onNext: { _ in emitter(.completed) },
+                    onError: { error in emitter(.error(error)) }
+                )
+
+            return Disposables.create {
+                disposable.dispose()
+            }
+        }
+    }
+    
+    func setUserDeviceLocation(_ identifier: String, location: Int) -> Completable {
+        do {
+            let session = try self.sessionFtpClientReady(identifier)
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Completable.error(PolarErrors.serviceNotFound)
+            }
+
+            return getUserDeviceSettingsProto(client: client)
+                .flatMapCompletable { currentSettings in
+                    guard let deviceLocation = PbDeviceLocation(rawValue: location) else {
+                        return Completable.error(PolarErrors.invalidArgument(description: "Invalid device location: \(location)"))
+                    }
+
+                    var updatedGeneralSettings = currentSettings.generalSettings
+                    updatedGeneralSettings.deviceLocation = deviceLocation
+
+                    var updatedSettings = currentSettings
+                    updatedSettings.generalSettings = updatedGeneralSettings
+
+                    return self.setUserDeviceSettingsProto(client: client, polarUserDeviceSettings: updatedSettings)
+                }
+                .do(onError: { error in
+                    BleLogger.error("Failed to set user device location: \(error)")
+                })
+        } catch {
+            return Completable.error(error)
+        }
+    }
+
+    func setUsbConnectionMode(_ identifier: String, enabled: Bool) -> Completable {
+        do {
+            let session = try self.sessionFtpClientReady(identifier)
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Completable.error(PolarErrors.serviceNotFound)
+            }
+
+            sendInitializationAndStartSyncNotifications(client: client).subscribe()
+            return getUserDeviceSettingsProto(client: client)
+                .flatMapCompletable { currentSettings in
+                    let mode: Data_PbUsbConnectionSettings.PbUsbConnectionMode = enabled ? .on : .off
+
+                    var usbSettings = Data_PbUsbConnectionSettings()
+                    usbSettings.mode = mode
+
+                    var updatedSettings = currentSettings
+                    updatedSettings.usbConnectionSettings = usbSettings
+
+                    return self.setUserDeviceSettingsProto(client: client, polarUserDeviceSettings: updatedSettings)
+                }.do(onError: { error in
+                    BleLogger.error("Failed to set USB connection mode: \(error)")
+                }
+            )
+        } catch {
+            return Completable.error(error)
+        }
+    }
+
+    private func setUserDeviceSettingsProto(client: BlePsFtpClient, polarUserDeviceSettings: Data_PbUserDeviceSettings) -> Completable {
+        return Completable.create { completable in
+            do {
+                var operation = Protocol_PbPFtpOperation()
+                operation.command = .put
+                operation.path = DEVICE_SETTINGS_FILE_PATH
+                let proto = try operation.serializedData()
+                
+                let settingsData = try polarUserDeviceSettings.serializedData()
+                let inputStream = InputStream(data: settingsData)
+
+                client.write(proto as NSData, data: inputStream)
+                    .subscribe(
+                        onError: { error in
+                            completable(.error(error))
+                        }, onCompleted: {
+                            completable(.completed)
+                        }
+                    )
+            } catch {
+                completable(.error(error))
+            }
+
+            return Disposables.create()
+        }
+    }
+
+    private func getUserDeviceSettingsProto(client: BlePsFtpClient) -> Single<Data_PbUserDeviceSettings> {
+
+        var operation = Protocol_PbPFtpOperation()
+        operation.command = .get
+        operation.path = DEVICE_SETTINGS_FILE_PATH
+
+        do {
+            let request = try operation.serializedData()
+            return client.request(request)
+                .map { responseData in
+                    try Data_PbUserDeviceSettings(serializedData: Data(responseData))
+                }
+        } catch let error {
+            return Single.error(error)
+        }
+    }
+
+    private func listFiles(identifier: String, folderPath: String = "/", condition: @escaping (_ p: String) -> Bool) -> Observable<String> {
+
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.error(PolarErrors.serviceNotFound)
             }
-            
+
             var path = folderPath
-            
+
             if (path.first != "/") {
                 path.insert("/", at: path.startIndex)
             }
             if (path.last != "/") {
                 path.insert("/", at: path.endIndex)
             }
-       
+
             return fetchRecursive(path, client: client, condition: condition)
             .map { (entry) -> String in
-                dataDeletionStats.fileDeletionMap[entry.name] = false
                 return (entry.name)
             }
 
@@ -3561,36 +3693,84 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Observable.error(PolarErrors.deviceError(description: "Error in listing files from \(folderPath) path."))
         }
     }
+    
+    private func checkAutoSampleFile(identifier: String, filePath: String, until: Date) -> Single<Bool> {
 
-    private func checkAutoSampleFiles(identifier: String, dataDeletionStats: DataDeletionStats) -> Observable<NSData> {
-        
-        return Observable.range(start: 0, count: dataDeletionStats.fileDeletionMap.count)
-            .flatMap() { [self] index -> Observable<NSData> in
-                let filePath = Array(dataDeletionStats.fileDeletionMap)[index]
-               return getFile(identifier: identifier, filePath: filePath.key)
-                .map { file -> NSData in
-                    let calendar = Calendar.current
-                    let dateFormatter = DateFormatter()
-                    dateFormatter.dateFormat = "yyyyMMdd"
-                    dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        var canDelete = false
+        return getFile(identifier: identifier, filePath: filePath)
+            .map { file -> Bool in
+                let calendar = Calendar.current
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyyMMdd"
+                dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
 
-                    let fileData = try Data_PbAutomaticSampleSessions(serializedData: file as Data)
-                    let proto = AutomaticSamples.fromProto(proto: fileData)
-                    let dateCompareResult = calendar.compare(self.dateFromStringWOTime(dateFrom: dateFormatter.string(from: proto.day!)), to: self.dateFromStringWOTime(dateFrom: dateFormatter.string(from: Date())), toGranularity: .day)
+                let fileData = try Data_PbAutomaticSampleSessions(serializedData: file as Data)
+                let proto = AutomaticSamples.fromProto(proto: fileData)
+                let dateCompareResult = calendar.compare(self.dateFromStringWOTime(dateFrom: dateFormatter.string(from: proto.day!)), to: self.dateFromStringWOTime(dateFrom: dateFormatter.string(from: until)), toGranularity: .day)
 
-                    switch dateCompareResult {
-                    case .orderedSame:
-                        dataDeletionStats.fileDeletionMap.removeValue(forKey: filePath.key)
-                    case .orderedAscending:
-                        break
-                    case .orderedDescending:
-                        break
-                    }
-
-                    return file as NSData
+                switch dateCompareResult {
+                case .orderedSame:
+                    canDelete = true
+                case .orderedAscending:
+                    break
+                case .orderedDescending:
+                    break
                 }
-            }
+                return canDelete
+            }.asSingle()
     }
+
+    private func deleteDataDirectory(identifier: String, directoryPath: String) -> Completable {
+
+           do {
+               let session = try self.sessionFtpClientReady(identifier)
+               guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                   return Completable.error(PolarErrors.serviceNotFound)
+               }
+
+               let dateFormatter = DateFormatter()
+               dateFormatter.dateFormat = "yyyyMMdd"
+               dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+
+               return checkIfDirectoryIsEmpty(directoryPath: directoryPath, client: client)
+                   .flatMapCompletable( { isEmpty in
+                       if (isEmpty) {
+                           return self.removeSingleFile(identifier: identifier, filePath: directoryPath).asCompletable()
+                       } else {
+                           return Completable.empty()
+                       }
+                   })
+           } catch {
+               BleLogger.error("Error while getting session \(error)")
+               return Completable.error(PolarErrors.serviceNotFound)
+           }
+       }
+
+       private func checkIfDirectoryIsEmpty(directoryPath: String, client: BlePsFtpClient) -> Single<Bool> {
+
+           var path = directoryPath
+           if(!path.hasSuffix("/")) {
+               path = path + "/"
+           }
+
+           var operation = Protocol_PbPFtpOperation()
+           operation.command = Protocol_PbPFtpOperation.Command.get
+           operation.path = path
+           var request: Data!
+           do {
+               request = try operation.serializedData()
+           } catch {
+               return Single.error(PolarErrors.deviceError(description: "Error in getting files \(directoryPath) path."))
+           }
+           return client.request(request)
+               .flatMap({ data in
+                   let directory = try Protocol_PbPFtpDirectory(serializedData: data as Data)
+                   return Single.just(directory.entries.count == 0)
+               })
+               .do(onError: { error in
+                   BleLogger.error("Failed to get data from directory \(directoryPath).  Error: \(error.localizedDescription)")
+               })
+       }
 
     private func deleteAutoSampleFiles(identifier: String, dataDeletionStats: DataDeletionStats) {
 
@@ -3757,8 +3937,29 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(PolarErrors.deviceError(description: "Failed to remove file \(filePath) path."))
         }
     }
-    
-    func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+
+    private func removeMultipleFiles(identifier: String, filePaths: [String]) -> Completable {
+
+        do{
+            let session = try self.sessionFtpClientReady(identifier)
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Completable.error(PolarErrors.serviceNotFound)
+            }
+            return Observable.from(filePaths)
+                .enumerated()
+                .concatMap { filePath in
+                    var operation = Protocol_PbPFtpOperation()
+                    operation.command = Protocol_PbPFtpOperation.Command.remove
+                    operation.path = filePath.element
+                    let request = try operation.serializedData()
+                    return client.request(request).asCompletable()
+                }.asCompletable()
+        } catch {
+            return Completable.error(PolarErrors.deviceError(description: "Failed to remove files \(filePaths)."))
+        }
+    }
+
+    private func getFile(identifier: String, filePath: String) -> Observable<NSData> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
@@ -3795,97 +3996,98 @@ extension PolarBleApiImpl: PolarBleApi  {
         return calendar.date(from: datecomponents)!
     }
 
-    private func sendInitializationAndStartSyncNotifications(client: BlePsFtpClient) {
-        _ = client.sendNotification(
-            Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue,
-            parameters: nil
-        ).subscribe()
-        client.sendNotification(
-            Protocol_PbPFtpHostToDevNotification.startSync.rawValue,
-            parameters: nil
-        ).subscribe()
+    private func sendInitializationAndStartSyncNotifications(client: BlePsFtpClient) -> Completable {
+
+        return client.query(Protocol_PbPFtpQuery.requestSynchronization.rawValue, parameters: nil)
+            .asCompletable()
+            .andThen(client.sendNotification(Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue, parameters: nil))
+            .andThen(client.sendNotification(Protocol_PbPFtpHostToDevNotification.startSync.rawValue, parameters: nil))
     }
 
-    private func sendInitializationAndStartSyncNotificationsCompletable(client: BlePsFtpClient) -> Completable {
-        return client.sendNotification(Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue, parameters: nil)
-            .andThen(
-                client.sendNotification(Protocol_PbPFtpHostToDevNotification.startSync.rawValue, parameters: nil)
-            )
-    }
-
-    private func sendTerminateAndStopSyncNotifications(client: BlePsFtpClient) {
+    private func sendTerminateAndStopSyncNotifications(client: BlePsFtpClient) -> Completable {
         var params = Protocol_PbPFtpStopSyncParams()
+        var parameters: NSData
         params.completed = true
         do {
-            let parameters = try params.serializedData() as NSData
-            _ = client.sendNotification(
-                Protocol_PbPFtpHostToDevNotification.stopSync.rawValue,
-                parameters: parameters
-            ).subscribe()
-        } catch {
+            parameters = try params.serializedData() as NSData
+        } catch let error {
             BleLogger.error("Failed to serialize stop sync parameters: \(error)")
+            return Completable.error(error)
         }
-        
-        client.sendNotification(
-            Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
-            parameters: nil
-        ).subscribe()
+        return client.sendNotification(
+            Protocol_PbPFtpHostToDevNotification.stopSync.rawValue,
+            parameters: parameters
+        ).andThen(client.sendNotification(
+            Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,parameters: nil
+        ))
     }
-
 
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
         BleLogger.trace("writeFirmwareToDevice(): deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
         return Observable.create { observer in
-            do {
-                let session = try self.sessionFtpClientReady(deviceId)
-                guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                    throw PolarErrors.serviceNotFound
-                }
+            
+            guard let session = try? self.sessionFtpClientReady(deviceId) else {
+                observer.onError(PolarErrors.deviceNotConnected)
+                return Disposables.create()
+            }
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                observer.onError(PolarErrors.serviceNotFound)
+                return Disposables.create()
+            }
 
-                BleLogger.trace("writeFirmwareToDevice(): Initialize session")
-                self.sendInitializationAndStartSyncNotifications(client: client)
-                sleep(1) // Some race condition here?
-                BleLogger.trace("writeFirmwareToDevice(): Start \(firmwareFilePath) write")
-
-                var builder = Protocol_PbPFtpOperation()
-                builder.command = Protocol_PbPFtpOperation.Command.put
-                builder.path = firmwareFilePath
-                let proto = try builder.serializedData()
-                return client.write(
-                    proto as NSData,
-                    data: InputStream(data: firmwareBytes)
-                )
-                .throttle(.seconds(5), scheduler: MainScheduler.instance)
-                .do(onNext: { bytesWritten in
-                    BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
-                    observer.onNext(UInt(bytesWritten))
-                })
-                .ignoreElements()
-                .asCompletable()
-                .subscribe(onCompleted: {
-                    if firmwareFilePath.contains("SYSUPDAT.IMG") {
-                        BleLogger.trace("writeFirmwareToDevice(): Firmware file is SYSUPDAT.IMG, waiting for reboot")
+            BleLogger.trace("Initialize session")
+            return client.query(Protocol_PbPFtpQuery.prepareFirmwareUpdate.rawValue, parameters: nil).asCompletable()
+                .andThen(Completable.create { completable in
+                    do {
+                        BleLogger.trace("Start \(firmwareFilePath) write")
+                        var builder = Protocol_PbPFtpOperation()
+                        builder.command = Protocol_PbPFtpOperation.Command.put
+                        builder.path = firmwareFilePath
+                        let proto = try builder.serializedData()
+                        
+                        _ = client.write(proto as NSData, data: InputStream(data: firmwareBytes))
+                            .throttle(.seconds(5), scheduler: MainScheduler.instance)
+                            .do(onNext: { bytesWritten in
+                                BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
+                                observer.onNext(UInt(bytesWritten))
+                            })
+                            .ignoreElements()
+                            .asCompletable()
+                            .subscribe(onCompleted: {
+                                if firmwareFilePath.contains("SYSUPDAT.IMG") {
+                                    BleLogger.trace("Firmware file is SYSUPDAT.IMG, waiting for reboot")
+                                }
+                                observer.onCompleted()
+                                completable(.completed)
+                            }, onError: { error in
+                                if let pftpError = Protocol_PbPFtpError(rawValue: error._code) {
+                                    if pftpError == .batteryTooLow {
+                                        observer.onError(PolarErrors.deviceError(description: "Battery too low to perform firmware update"))
+                                    } else {
+                                        BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
+                                        observer.onError(error)
+                                    }
+                                } else {
+                                    BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
+                                    observer.onError(error)
+                                }
+                                completable(.error(error))
+                            })
+                    } catch {
+                        completable(.error(error))
                     }
+                    return Disposables.create()
+                })
+                .subscribe(onCompleted: {
                     observer.onCompleted()
                 }, onError: { error in
-                    BleLogger.trace("writeFirmwareToDevice(): ERROR: \(error.localizedDescription)")
-                    if (error.localizedDescription.contains("ResponseError error 1")) {
-                        observer.onCompleted()
-                    } else {
-                        BleLogger.trace("writeFirmwareToDevice(): Error in writeFirmwareToDevice(): \(error.localizedDescription)")
-                        observer.onError(error)
-                    }
+                    observer.onError(error)
                 })
-            } catch {
-                observer.onError(error)
-            }
-            
-            return Disposables.create()
         }
     }
 
-    private func waitDeviceSessionWithPftpToOpen(deviceId: String, timeoutSeconds: Int, waitForDeviceDownSeconds: Int = 0) -> Completable {
-        BleLogger.trace("waitDeviceSessionWithPftpToOpen(): timeoutSeconds \(timeoutSeconds), waitForDeviceDownSeconds \(waitForDeviceDownSeconds)")
+    private func waitDeviceSessionToOpen(deviceId: String, timeoutSeconds: Int, waitForDeviceDownSeconds: Int = 0) -> Completable {
+        BleLogger.trace("Wait for device session to open, timeoutSeconds: \(timeoutSeconds), waitForDeviceDownSeconds: \(waitForDeviceDownSeconds)")
         let pollIntervalSeconds = 5
 
         return Completable.create { emitter in
@@ -4162,6 +4364,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                 startTime: offlineRecordingData.startTime
             )
         }
+    }
+
+    private func processEmptyData(
+        _ offlineRecordingData: OfflineRecordingData<Any>
+    ) -> PolarOfflineRecordingData {
+            return .emptyData(startTime:offlineRecordingData.startTime)
     }
 
     private func querySettings(_ identifier: String, type: PmdMeasurementType, recordingType: PmdRecordingType) -> Single<PolarSensorSetting> {
@@ -4444,6 +4652,9 @@ private extension PpgData {
             } else if (sample.frameType == PmdDataFrameType.type_9) {
                 polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: sample.ppgDataSamples))
                 dataType = PpgDataType.ppg3
+            } else if (sample.frameType == PmdDataFrameType.type_13) {
+                polarSamples.append((timeStamp: sample.timeStamp!, channelSamples: [sample.ppgDataSamples[0], sample.ppgDataSamples[1], sample.status ]))
+                dataType = PpgDataType.ppg2
             }
         }
         return PolarPpgData(type: dataType, samples: polarSamples)
@@ -4505,11 +4716,4 @@ private extension String {
         }
         return indices
     }
-}
-
-private class DataDeletionStats {
-    var fileDeletionMap = [String : Bool]()
-    let deleteOpCompleted = AtomicBoolean(initialValue: false)
-    var amountOfHandedDeletions = 0
-    var deletedDirs = [String]()
 }

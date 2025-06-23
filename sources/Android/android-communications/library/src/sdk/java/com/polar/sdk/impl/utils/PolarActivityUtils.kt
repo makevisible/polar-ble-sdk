@@ -55,33 +55,33 @@ internal object PolarActivityUtils {
                 }.doFinally {
                     var index = 0
                     if (fileList.isNotEmpty()) {
-                            for (file in fileList) {
-                                client.request(
-                                    PftpRequest.PbPFtpOperation.newBuilder()
-                                        .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
-                                        .setPath(file)
-                                        .build()
-                                        .toByteArray()
-                                ).subscribe(
-                                    { response ->
-                                        val proto =
-                                            ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
-                                        stepCount += proto.stepsSamplesList.sum()
-                                        if (++index == fileList.size) {
-                                            emitter.onSuccess(stepCount)
-                                        }
-                                    },
-                                    { error ->
-                                        BleLogger.w(
-                                            TAG,
-                                            "readStepsFromDayDirectory() failed for file: $file, error: $error"
-                                        )
-                                        emitter.onSuccess(0)
+                        for (file in fileList) {
+                            client.request(
+                                PftpRequest.PbPFtpOperation.newBuilder()
+                                    .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
+                                    .setPath(file)
+                                    .build()
+                                    .toByteArray()
+                            ).subscribe(
+                                { response ->
+                                    val proto =
+                                        ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
+                                    stepCount += proto.stepsSamplesList.sum()
+                                    if (++index == fileList.size) {
+                                        emitter.onSuccess(stepCount)
                                     }
-                                )
-                            }
-                        } else {
-                            emitter.onSuccess(0)
+                                },
+                                { error ->
+                                    BleLogger.w(
+                                        TAG,
+                                        "readStepsFromDayDirectory() failed for file: $file, error: $error"
+                                    )
+                                    emitter.onSuccess(0)
+                                }
+                            )
+                        }
+                    } else {
+                        emitter.onSuccess(0)
                     }
                 }.doOnError {
                     emitter.onSuccess(0)
@@ -91,8 +91,7 @@ internal object PolarActivityUtils {
 
     fun readDistanceFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<Float> {
         BleLogger.d(TAG, "readDistanceFromDayDirectory: $date")
-        return sendSyncStart(client)
-            .andThen(Single.create { emitter ->
+        return Single.create { emitter ->
                 val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormatter.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
@@ -113,13 +112,12 @@ internal object PolarActivityUtils {
                         }
                     )
                 emitter.setDisposable(disposable)
-            })
+            }
     }
 
     fun readActiveTimeFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<PolarActiveTimeData> {
         BleLogger.d(TAG, "readActiveTimeFromDayDirectory: $date")
-        return sendSyncStart(client)
-            .andThen(Single.create { emitter ->
+        return Single.create { emitter ->
                 val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormatter.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
@@ -151,13 +149,12 @@ internal object PolarActivityUtils {
                         }
                     )
                 emitter.setDisposable(disposable)
-            })
+            }
     }
 
     fun readSpecificCaloriesFromDayDirectory(client: BlePsFtpClient, date: LocalDate, caloriesType: CaloriesType): Single<Int> {
         BleLogger.d(TAG, "readSpecificCaloriesFromDayDirectory: $date, type: $caloriesType")
-        return sendSyncStart(client)
-            .andThen(Single.create { emitter ->
+        return Single.create { emitter ->
                 val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormatter.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
@@ -182,15 +179,7 @@ internal object PolarActivityUtils {
                         }
                     )
                 emitter.setDisposable(disposable)
-            })
-    }
-
-    // Send sync start to generate daily summary for the current date
-    private fun sendSyncStart(client: BlePsFtpClient): Completable {
-        return client.sendNotification(
-            PftpNotification.PbPFtpHostToDevNotification.START_SYNC.number,
-            null
-        )
+            }
     }
 
     private fun polarActiveTimeFromProto(proto: PbDuration): PolarActiveTime {
