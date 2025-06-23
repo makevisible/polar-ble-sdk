@@ -3814,12 +3814,12 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
     }
 
 
-    private fun waitDeviceSessionWithPftpWithPftpToOpen(
+    private fun waitDeviceSessionWithPftpToOpen(
         deviceId: String,
         timeoutSeconds: Long,
         waitForDeviceDownSeconds: Long = 0L
     ): Completable {
-        BleLogger.d(TAG, "waitDeviceSessionWithPftpWithPftpToOpen(): seconds $timeoutSeconds, waitForDeviceDownSeconds $waitForDeviceDownSeconds")
+        BleLogger.d(TAG, "waitDeviceSessionWithPftpToOpen(): seconds $timeoutSeconds, waitForDeviceDownSeconds $waitForDeviceDownSeconds")
         val pollIntervalSeconds = 5L
 
         return Observable.timer(waitForDeviceDownSeconds, TimeUnit.SECONDS)
