@@ -3277,15 +3277,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
@@ -3513,15 +3505,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val nightlyRechargeDataList = mutableListOf<PolarNightlyRechargeData>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<Date>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
