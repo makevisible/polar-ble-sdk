@@ -2749,7 +2749,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                         }
                                         .andThen(Completable.deferred {
                                             BleLogger.trace("Waiting for device session to open after factory reset")
-                                            return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                            return self.waitDeviceSessionToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
                                         })
                                         .andThen(Observable.deferred {
                                             BleLogger.trace("Writing firmware update files: \(sortedFirmwarePackage.count)")
@@ -2784,7 +2784,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                         BleLogger.trace("Firmware update is in finalizing stage")
 
                                         BleLogger.trace("Device rebooting")
-                                        self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                        self.waitDeviceSessionToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
                                             .do(onSubscribe: {
                                                 BleLogger.trace("Waiting for device session to open after reboot with timeout: \(rebootMaxWaitTimeSeconds) seconds")
                                             })
@@ -2815,7 +2815,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                             }
                                             .flatMap { _ in
                                                 BleLogger.trace("Waiting for device session to open after factory reset with timeout: \(factoryResetMaxWaitTimeSeconds) seconds")
-                                                return self.waitDeviceSessionWithPftpToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
+                                                return self.waitDeviceSessionToOpen(deviceId: identifier, timeoutSeconds: Int(factoryResetMaxWaitTimeSeconds), waitForDeviceDownSeconds: 10)
                                                     .do(onSubscribe: {
                                                         BleLogger.trace("Waiting for device session to open post factory reset")
                                                     })
@@ -3772,154 +3772,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                })
        }
 
-    private func deleteAutoSampleFiles(identifier: String, dataDeletionStats: DataDeletionStats) {
-
-        Observable.from(dataDeletionStats.fileDeletionMap)
-            .flatMap() { file, item -> PrimitiveSequence<SingleTrait, ()> in
-                dataDeletionStats.amountOfHandedDeletions+=1
-                return self.removeSingleFile(identifier: identifier, filePath: file)
-                    .map { _ -> () in
-                        dataDeletionStats.fileDeletionMap[file] = true
-                    }
-            }.subscribe(
-                onError: { error in
-                    BleLogger.error("Error in deleting auto samples file from device \(identifier). Error: \(error)")
-                },
-                onCompleted: {
-                    if (dataDeletionStats.amountOfHandedDeletions == dataDeletionStats.fileDeletionMap.count) {
-                        dataDeletionStats.deleteOpCompleted.set(true)
-                    }
-                }
-            )
-    }
-
-    private func deleteSdLogFiles(identifier: String, dataDeletionStats: DataDeletionStats) {
-        
-        Observable.from(dataDeletionStats.fileDeletionMap)
-            .flatMap() { file, item -> PrimitiveSequence<SingleTrait, ()> in
-                dataDeletionStats.amountOfHandedDeletions+=1
-                return self.removeSingleFile(identifier: identifier, filePath: file)
-                    .map { _ -> () in
-                        dataDeletionStats.fileDeletionMap[file] = true
-                    }
-            }
-            .subscribe(
-                onNext: {print("")},
-                onError: { error in
-                    BleLogger.error("Error in deleting log file from device \(identifier). Error: \(error)")
-                },
-                onCompleted: {
-                    if (dataDeletionStats.amountOfHandedDeletions == dataDeletionStats.fileDeletionMap.count) {
-                        dataDeletionStats.deleteOpCompleted.set(true)
-                    }
-                }
-            )
-    }
-    
-    private func deleteDataDirectories(identifier: String, until: Date, dataDeletionStats: DataDeletionStats) {
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMdd"
-        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
-        
-        var directorySet = [String : Bool]()
-
-        for (file, _) in dataDeletionStats.fileDeletionMap {
-            let fileUriParts = file.split(separator: "/")
-            let fileDate = dateFromStringWOTime(dateFrom: String(fileUriParts[2]))
-            // Remove time from until date.
-            let until = dateFromStringWOTime(dateFrom: dateFormatter.string(from: until))
-            if !(fileDate < until) {
-                dataDeletionStats.fileDeletionMap.removeValue(forKey: file)
-            }
-        }
-
-        Observable.from(dataDeletionStats.fileDeletionMap)
-            .flatMap() { fileUri, item -> PrimitiveSequence<SingleTrait, ()> in
-                dataDeletionStats.amountOfHandedDeletions+=1
-                let parentFolderPath = "/" + fileUri.split(separator: "/").dropLast().joined(separator: "/")
-                return self.removeSingleFile(identifier: identifier, filePath: parentFolderPath)
-                    .map { _ -> () in
-                        BleLogger.trace("Deleted directory \(parentFolderPath)")
-                    }
-            }.subscribe(
-                onError: { error in
-                    BleLogger.error("Error while deleting a data directory, error: \(error)")
-                },
-                onCompleted: {
-                    self.findFilesFromDayDirectories(identifier: identifier, dataDeletionStats: dataDeletionStats)
-                }
-            )
-    }
-
-    private func findFilesFromDayDirectories(identifier: String, dataDeletionStats: DataDeletionStats) {
-        
-        var remainingFiles = [String : Bool]()
-        
-        if (!dataDeletionStats.fileDeletionMap.isEmpty) {
-            for (file, _) in dataDeletionStats.fileDeletionMap {
-                let fileUriParts = file.split(separator: "/")
-                let fileUri = "/" + fileUriParts.dropLast().dropLast().joined(separator: "/")
-
-                listFiles(identifier: identifier, dataDeletionStats: dataDeletionStats, folderPath: fileUri, condition: { (entry) -> Bool in
-                    return entry.matches("^([0-9]{8})(\\/)") ||
-                    entry.matches("^([A-Z-0-9]{1,6}[0-9]{0,10000})(/)") ||
-                    entry.contains(".BPB") ||
-                    entry.contains(".REC")
-                })
-                .map{ item -> () in
-                    remainingFiles[item] = false
-                }
-                .asObservable()
-                .subscribe(
-                    onError: { error in
-                        // If day directory is totally empty BlePsFtpUtility.processRfc76MessageFrame throws error as there is no payload from device.
-                        if ("frameHasNoPayload".compare("\(error)") == .orderedSame) {
-                            self.deleteDayDirectories(identifier: identifier, dataDeletionStats: dataDeletionStats)
-                        } else {
-                            BleLogger.error("An error occurred while trying read from path \(fileUri), error: \(error)")
-                        }
-                    },
-                    onCompleted: {
-                        if (remainingFiles.isEmpty) {
-                            self.deleteDayDirectories(identifier: identifier, dataDeletionStats: dataDeletionStats)
-                        } else {
-                            dataDeletionStats.deleteOpCompleted.set(true)
-                        }
-                    }
-                )
-            }
-        } else {
-            dataDeletionStats.deleteOpCompleted.set(true)
-        }
-    }
-    
-    private func deleteDayDirectories(identifier: String, dataDeletionStats: DataDeletionStats) {
-        
-        var directorySet = [String : Bool]()
-        
-        for (file, _) in dataDeletionStats.fileDeletionMap {
-            let fileUri = "/" + file.split(separator: "/").dropLast().dropLast().joined(separator: "/")
-            directorySet[fileUri] = false
-        }
-
-        Observable.from(directorySet)
-            .flatMap() { fileUri, item -> PrimitiveSequence<SingleTrait, ()> in
-                return self.removeSingleFile(identifier: identifier, filePath: fileUri)
-                    .map { _ -> () in
-                        BleLogger.trace("Deleted directory \(fileUri)")
-                    }
-            }.subscribe(
-                onError: { error in
-                    BleLogger.error("An error occurred while deleting a directory, error: \(error)")
-                },
-                onCompleted: {
-                    if (dataDeletionStats.amountOfHandedDeletions == dataDeletionStats.fileDeletionMap.count) {
-                        dataDeletionStats.deleteOpCompleted.set(true)
-                    }
-                }
-            )
-    }
 
     func removeSingleFile(identifier: String, filePath: String) -> Single<NSData> {
         BleLogger.trace("Deleting file \(filePath) from device \(identifier).")
@@ -3959,7 +3811,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    private func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+    func getFile(identifier: String, filePath: String) -> Observable<NSData> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
