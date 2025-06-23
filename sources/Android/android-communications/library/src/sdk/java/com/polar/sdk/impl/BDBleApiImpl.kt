@@ -2924,11 +2924,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return flowable
     }
 
-
-    override fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus> {
-        return updateFirmware(identifier, firmwareUrl = "")
-    }
-
     // Returns availableVersion, firmwareURL, FirmwareUpdateStatus
     private fun checkFirmwareUrlAvailability(client: BlePsFtpClient, identifier: String): Single<Triple<String?, String?, FirmwareUpdateStatus>> {
         val deviceInfo =
@@ -3077,15 +3072,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val stepsDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<LocalDate>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
@@ -3119,15 +3106,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val distanceDataList = mutableListOf<Pair<LocalDate, Float>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<LocalDate>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
@@ -3223,15 +3202,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val caloriesDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val calendar = Calendar.getInstance()
-        calendar.time = fromDate
-
-        val datesList = mutableListOf<LocalDate>()
-
-        while (!calendar.time.after(toDate)) {
-            datesList.add(calendar.time)
-            calendar.add(Calendar.DATE, 1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
