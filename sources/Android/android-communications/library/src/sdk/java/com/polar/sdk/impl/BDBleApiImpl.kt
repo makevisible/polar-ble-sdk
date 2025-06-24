@@ -3072,7 +3072,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val stepsDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val datesList = getDatesBetween(fromDate, toDate)
+        val calendar = Calendar.getInstance()
+        calendar.time = fromDate
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
@@ -3106,7 +3107,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val distanceDataList = mutableListOf<Pair<LocalDate, Float>>()
 
-        val datesList = getDatesBetween(fromDate, toDate)
+        val calendar = Calendar.getInstance()
+        calendar.time = fromDate
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
@@ -3202,7 +3204,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val caloriesDataList = mutableListOf<Pair<LocalDate, Int>>()
 
-        val datesList = getDatesBetween(fromDate, toDate)
+        val calendar = Calendar.getInstance()
+        calendar.time = fromDate
 
         return sendInitializationAndStartSyncNotifications(client)
             .flatMap {
