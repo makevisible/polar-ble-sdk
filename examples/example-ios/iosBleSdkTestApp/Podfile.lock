@@ -1,32 +1,37 @@
 PODS:
-  - Alamofire (5.8.1)
-  - PolarBleSdk (5.9.0):
-    - Alamofire (~> 5.8.1)
-    - RxSwift (~> 6.5.0)
+  - PolarBleSdk (6.4.1):
+    - RxSwift (~> 6.8.0)
     - SwiftProtobuf (~> 1.0)
     - Zip (~> 2.1.2)
-  - RxSwift (6.5.0)
-  - SwiftProtobuf (1.28.2)
+  - RxSwift (6.8.0)
+  - SwiftProtobuf (1.29.0)
   - Zip (2.1.2)
 
 DEPENDENCIES:
-  - PolarBleSdk (= 5.9.0)
+  - PolarBleSdk (from `https://github.com/makevisible/polar-ble-sdk.git`, tag `6.4.3-visible`)
 
 SPEC REPOS:
   https://github.com/CocoaPods/Specs.git:
-    - Alamofire
-    - PolarBleSdk
     - RxSwift
     - SwiftProtobuf
     - Zip
 
+EXTERNAL SOURCES:
+  PolarBleSdk:
+    :git: https://github.com/makevisible/polar-ble-sdk.git
+    :tag: 6.4.3-visible
+
+CHECKOUT OPTIONS:
+  PolarBleSdk:
+    :git: https://github.com/makevisible/polar-ble-sdk.git
+    :tag: 6.4.3-visible
+
 SPEC CHECKSUMS:
-  Alamofire: 3ca42e259043ee0dc5c0cdd76c4bc568b8e42af7
-  PolarBleSdk: 2a5eec733ea2203e22a97e127a3ab55c70c74b49
-  RxSwift: 5710a9e6b17f3c3d6e40d6e559b9fa1e813b2ef8
-  SwiftProtobuf: 4dbaffec76a39a8dc5da23b40af1a5dc01a4c02d
+  PolarBleSdk: 36b04b29c7dbad4ad5db26901e77b6ae8c3ae318
+  RxSwift: 4e28be97cbcfeee614af26d83415febbf2bf6f45
+  SwiftProtobuf: b7aa08087e2ab6d162862d143020091254095f69
   Zip: b3fef584b147b6e582b2256a9815c897d60ddc67
 
-PODFILE CHECKSUM: 95719617f41d543374d1e1a785f4fc8c4acadce5
+PODFILE CHECKSUM: 00cdbdc24806c12709db3ccd1c0f72b993995117
 
-COCOAPODS: 1.15.2
+COCOAPODS: 1.16.2

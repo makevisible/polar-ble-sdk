@@ -261,6 +261,8 @@ class PolarBleSdkManager : ObservableObject {
             temperatureStreamStart(settings: PolarSensorSetting(polarSensorSettings))
         case .pressure:
             pressureStreamStart(settings: PolarSensorSetting(polarSensorSettings))
+        case .skinTemperature:
+            NSLog("not supported yet")
         }
     }
     
@@ -405,6 +407,10 @@ class PolarBleSdkManager : ObservableObject {
                         self.offlineRecordingData.dataSize = offlineRecordingEntry.size
                         self.offlineRecordingData.downLoadTime = elapsedTime
                     }
+                case .skinTemperatureOfflineRecordingData(_, startTime: let startTime):
+                  NSLog("SKIN TEMP data received")
+                case .emptyData(startTime: let startTime):
+                  NSLog("Empty data")
                 }
                 Task { @MainActor in
                     self.offlineRecordingData.loadState = OfflineRecordingDataLoadingState.success
@@ -497,7 +503,7 @@ class PolarBleSdkManager : ObservableObject {
                             self.writeOnlineStreamLogFile(fileHandle, data)
                         }
                         
-                        for item in data.samples {
+                      for item in data {
                             NSLog("ECG    µV: \(item.voltage) timeStamp: \(item.timeStamp)")
                         }
                     case .error(let err):
@@ -539,7 +545,7 @@ class PolarBleSdkManager : ObservableObject {
                         if let fileHandle = logFile?.fileHandle {
                             self.writeOnlineStreamLogFile(fileHandle, data)
                         }
-                        for item in data.samples {
+                        for item in data {
                             NSLog("ACC    x: \(item.x) y: \(item.y) z: \(item.z) timeStamp: \(item.timeStamp)")
                         }
                     case .error(let err):
@@ -580,7 +586,7 @@ class PolarBleSdkManager : ObservableObject {
                         if let fileHandle = logFile?.fileHandle {
                             self.writeOnlineStreamLogFile(fileHandle, data)
                         }
-                        for item in data.samples {
+                        for item in data {
                             NSLog("MAG    x: \(item.x) y: \(item.y) z: \(item.z) timeStamp: \(item.timeStamp)")
                         }
                     case .error(let err):
@@ -621,7 +627,7 @@ class PolarBleSdkManager : ObservableObject {
                         if let fileHandle = logFile?.fileHandle {
                             self.writeOnlineStreamLogFile(fileHandle, data)
                         }
-                        for item in data.samples {
+                        for item in data {
                             NSLog("GYR    x: \(item.x) y: \(item.y) z: \(item.z) timeStamp: \(item.timeStamp)")
                         }
                     case .error(let err):
@@ -1169,6 +1175,8 @@ class PolarBleSdkManager : ObservableObject {
             result = "TIMESTAMP TEMPERATURE(Celcius)\n"
         case .pressure:
             result = "TIMESTAMP PRESSURE(mBar)\n"
+        case .skinTemperature:
+            result = "TIMESTAMP SKIN_TEMPERATURE(Celcius)\n"
         }
         return result
     }
@@ -1177,13 +1185,13 @@ class PolarBleSdkManager : ObservableObject {
         var result = ""
         switch data {
         case let polarAccData as PolarAccData:
-            result += polarAccData.samples.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
+            result += polarAccData.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
         case let polarEcgData as PolarEcgData:
-            result +=  polarEcgData.samples.map{ "\($0.timeStamp) \($0.voltage)" }.joined(separator: "\n")
+            result +=  polarEcgData.map{ "\($0.timeStamp) \($0.voltage)" }.joined(separator: "\n")
         case let polarGyroData as PolarGyroData:
-            result +=  polarGyroData.samples.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
+            result +=  polarGyroData.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
         case let polarMagnetometerData as PolarMagnetometerData:
-            result +=  polarMagnetometerData.samples.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
+            result +=  polarMagnetometerData.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
         case let polarPpgData as PolarPpgData:
             if polarPpgData.type == PpgDataType.ppg3_ambient1 {
                 result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0]) \($0.channelSamples[1]) \($0.channelSamples[2]) \($0.channelSamples[3])" }.joined(separator: "\n")
@@ -1294,6 +1302,8 @@ fileprivate extension PolarDeviceDataType {
           return "TEMP"
         case .pressure:
           return "PRE"
+        case .skinTemperature:
+          return "SKIN";
         }
     }
 }
@@ -1350,6 +1360,10 @@ extension PolarBleSdkManager : PolarBleApiObserver {
 
 // MARK: - PolarBleApiDeviceInfoObserver
 extension PolarBleSdkManager : PolarBleApiDeviceInfoObserver {
+  func batteryChargingStatusReceived(_ identifier: String, chargingStatus: PolarBleSdk.BleBasClient.ChargeState) {
+    NSLog("batterChargingStatusReceived")
+  }
+  
   func disInformationReceivedWithKeysAsStrings(_ identifier: String, key: String, value: String) {
     // Not implemented
   }

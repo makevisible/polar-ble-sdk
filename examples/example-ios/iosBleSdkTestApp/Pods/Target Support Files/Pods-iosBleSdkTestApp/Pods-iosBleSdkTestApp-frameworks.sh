@@ -179,11 +179,13 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/PolarBleSdk/PolarBleSdk.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/RxSwift/RxSwift.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/SwiftProtobuf/SwiftProtobuf.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/Zip/Zip.framework"
 fi
 if [[ "$CONFIGURATION" == "Release" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/PolarBleSdk/PolarBleSdk.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/RxSwift/RxSwift.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/SwiftProtobuf/SwiftProtobuf.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/Zip/Zip.framework"
 fi
 if [ "${COCOAPODS_PARALLEL_CODE_SIGN}" == "true" ]; then
   wait

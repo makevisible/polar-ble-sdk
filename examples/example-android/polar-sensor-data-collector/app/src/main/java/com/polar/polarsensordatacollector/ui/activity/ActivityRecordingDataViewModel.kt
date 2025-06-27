@@ -146,8 +146,8 @@ class ActivityRecordingDataViewModel @Inject constructor(
                 PolarBleApi.PolarActivityDataType.STEPS ->
                     when (val stepsRecording = polarDeviceStreamingRepository.getStepsData(
                         deviceId,
-                        Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                        Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
+                        LocalDate.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                        LocalDate.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
                     )) {
                         is ResultOfRequest.Success -> {
                             if (stepsRecording.value != null) {
@@ -169,8 +169,8 @@ class ActivityRecordingDataViewModel @Inject constructor(
                 PolarBleApi.PolarActivityDataType.CALORIES ->
                     when (val caloriesRecording = polarDeviceStreamingRepository.getCaloriesData(
                         deviceId,
-                        Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                        Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                        LocalDate.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                        LocalDate.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
                         caloriesType
                     )) {
                         is ResultOfRequest.Success -> {
@@ -215,8 +215,8 @@ class ActivityRecordingDataViewModel @Inject constructor(
                 PolarBleApi.PolarActivityDataType.NIGHTLY_RECHARGE ->
                     when (val nightlyRechargeRecording = polarDeviceStreamingRepository.getNightlyRechargeData(
                             deviceId,
-                            Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                            Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
+                            LocalDate.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
+                            LocalDate.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
                     )) {
                         is ResultOfRequest.Success -> {
                             if (nightlyRechargeRecording.value != null) {

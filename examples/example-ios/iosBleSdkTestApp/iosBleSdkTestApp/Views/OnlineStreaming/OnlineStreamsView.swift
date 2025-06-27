@@ -155,7 +155,9 @@ extension PolarDeviceDataType: Identifiable {
         case .temperature:
           return 8
         case .pressure:
-          return 9 
+          return 9
+        case .skinTemperature:
+          return 10
         }
     }
 }

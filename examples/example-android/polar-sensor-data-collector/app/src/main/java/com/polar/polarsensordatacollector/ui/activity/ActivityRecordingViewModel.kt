@@ -140,48 +140,9 @@ class ActivityRecordingViewModel @Inject constructor(
                     activityUiState = ActivityUiState.FetchedData(data = sleepData)
                     _sleepLiveData.postValue(result)
                 }
+
                 is ResultOfRequest.Failure -> {
                     Log.w(TAG, "Failed to read sleep analysis result from $from to $to")
-                }
-            }
-        }
-    }
-
-    fun getSteps(from: Date, to: Date) {
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = polarDeviceStreamingRepository.getStepsData(deviceId, from, to)) {
-                is ResultOfRequest.Success -> {
-                    val result = result.value ?: listOf(PolarStepsData())
-                    var stepsData = ActivityData(
-                        startDate =  Instant.ofEpochMilli(from.toInstant().toEpochMilli()).atZone(ZoneId.systemDefault()).toLocalDate(),
-                        endDate = Instant.ofEpochMilli(to.toInstant().toEpochMilli()).atZone(ZoneId.systemDefault()).toLocalDate(),
-                        activityType = PolarBleApi.PolarActivityDataType.STEPS
-                    )
-                    activityUiState = ActivityUiState.FetchedData(data = stepsData)
-                    _stepsLiveData.postValue(result)
-                }
-                is ResultOfRequest.Failure -> {
-                    Log.w(TAG, "Failed to read steps data from $from to $to")
-                }
-            }
-        }
-    }
-
-    fun getCalories(from: Date, to: Date, caloriesType: CaloriesType) {
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = polarDeviceStreamingRepository.getCaloriesData(deviceId, from, to, caloriesType)) {
-                is ResultOfRequest.Success -> {
-                    val result = result.value ?: listOf(PolarCaloriesData())
-                    val caloriesData = ActivityData(
-                        startDate = Instant.ofEpochMilli(from.toInstant().toEpochMilli()).atZone(ZoneId.systemDefault()).toLocalDate(),
-                        endDate = Instant.ofEpochMilli(to.toInstant().toEpochMilli()).atZone(ZoneId.systemDefault()).toLocalDate(),
-                        activityType = PolarBleApi.PolarActivityDataType.CALORIES
-                    )
-                    activityUiState = ActivityUiState.FetchedData(data = caloriesData)
-                    _caloriesLiveData.postValue(result)
-                }
-                is ResultOfRequest.Failure -> {
-                    Log.w(TAG, "Failed to read calories data from $from to $to")
                 }
             }
         }

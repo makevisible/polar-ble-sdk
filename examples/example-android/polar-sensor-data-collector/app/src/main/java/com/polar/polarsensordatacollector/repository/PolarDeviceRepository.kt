@@ -602,7 +602,7 @@ class PolarDeviceRepository @Inject constructor(
     }
 
     fun doFirmwareUpdate(deviceId: String, firmwareUrl: String = ""): Flowable<FirmwareUpdateStatus> {
-        return api.updateFirmware(deviceId, firmwareUrl)
+        return api.updateFirmware(deviceId, firmwareUrl, "")
                 .subscribeOn(Schedulers.io())
                 .doOnSubscribe {
                     Log.d(TAG, "Firmware update started for device: $deviceId")
@@ -852,7 +852,7 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    suspend fun getStepsData(deviceId: String, from: Date, to: Date): ResultOfRequest<List<PolarStepsData>> = withContext(Dispatchers.IO) {
+    suspend fun getStepsData(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<PolarStepsData>> = withContext(Dispatchers.IO) {
         return@withContext try {
             var result = api.getSteps(deviceId, from, to).await()
             ResultOfRequest.Success(result)
@@ -863,8 +863,8 @@ class PolarDeviceRepository @Inject constructor(
 
     suspend fun getCaloriesData(
         deviceId: String,
-        from: Date,
-        to: Date,
+        from: LocalDate,
+        to: LocalDate,
         caloriesType: CaloriesType
     ): ResultOfRequest<List<PolarCaloriesData>> = withContext(Dispatchers.IO) {
         return@withContext try {
@@ -884,7 +884,7 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    suspend fun getNightlyRechargeData(deviceId: String, from: Date, to: Date): ResultOfRequest<List<PolarNightlyRechargeData>> = withContext(Dispatchers.IO) {
+    suspend fun getNightlyRechargeData(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<PolarNightlyRechargeData>> = withContext(Dispatchers.IO) {
         return@withContext try {
             val result = api.getNightlyRecharge(deviceId, from, to).await()
             ResultOfRequest.Success(result)
@@ -930,7 +930,7 @@ class PolarDeviceRepository @Inject constructor(
         until: LocalDate
     ): ResultOfRequest<Int> = withContext(Dispatchers.IO) {
         return@withContext try {
-            api.deleteStoredDeviceData(deviceId, storedDeviceDataType, until).awaitLast()
+            api.deleteStoredDeviceData(deviceId, storedDeviceDataType, until).await()
             ResultOfRequest.Success()
         } catch (e: Exception) {
             ResultOfRequest.Failure("Failed to delete $storedDeviceDataType files from device", e)
