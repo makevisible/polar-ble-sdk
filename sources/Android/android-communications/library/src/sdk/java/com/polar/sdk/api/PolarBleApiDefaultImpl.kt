@@ -25,6 +25,6 @@ object PolarBleApiDefaultImpl {
      */
     @JvmStatic
     fun versionInfo(): String {
-        return "6.4.1"
+        return "6.4.4"
     }
 }
