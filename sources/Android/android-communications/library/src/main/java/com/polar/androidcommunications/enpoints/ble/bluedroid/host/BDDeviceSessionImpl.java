@@ -457,6 +457,7 @@ public class BDDeviceSessionImpl extends BleDeviceSession implements BleGattTxIn
         final SingleEmitter<? super List<UUID>>[] observer = new SingleEmitter[1];
         return Single.create(
                 (SingleOnSubscribe<List<UUID>>) subscriber -> {
+                    BleLogger.d(TAG, "monitorServicesDiscovered: checkConnection: " + checkConnection + " sessionState: " + getSessionState());
                     if (checkConnection && getSessionState() != DeviceSessionState.SESSION_OPEN) {
                         subscriber.tryOnError(new BleDisconnected());
                     } else {
@@ -470,6 +471,9 @@ public class BDDeviceSessionImpl extends BleDeviceSession implements BleGattTxIn
                                     uuids.add(service.getUuid());
                                 }
                                 subscriber.onSuccess(uuids);
+                            } else {
+                                BleLogger.e(TAG, "monitorServicesDiscovered: gatt is null or services are empty");
+                                subscriber.tryOnError(new BleGattNotInitialized());
                             }
                         }
                     }
