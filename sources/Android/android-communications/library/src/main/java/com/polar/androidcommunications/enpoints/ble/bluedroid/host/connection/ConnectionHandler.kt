@@ -11,6 +11,7 @@ import io.reactivex.rxjava3.core.Scheduler
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.schedulers.Schedulers
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Connection handler handles connection states serialization, by using simple state pattern
@@ -129,15 +130,24 @@ class ConnectionHandler(
         commandState(bleDeviceSession, ConnectionHandlerAction.DEVICE_DISCONNECTED)
     }
 
+    private val commandStateLock = ReentrantLock()
     private fun commandState(bleDeviceSession: BDDeviceSessionImpl, action: ConnectionHandlerAction) {
-        when (state) {
-            ConnectionHandlerState.FREE -> {
-                free(bleDeviceSession, action)
+        BleLogger.d(TAG, "commandState: thread ${Thread.currentThread().name} trying to acquire lock")
+        commandStateLock.lock()
+        try {
+            BleLogger.d(TAG, "commandState: lock acquired by ${Thread.currentThread().name}")
+            when (state) {
+                ConnectionHandlerState.FREE -> {
+                    free(bleDeviceSession, action)
+                }
+                ConnectionHandlerState.CONNECTING -> {
+                    BleLogger.d(TAG, "commandState: state: $state action: $action")
+                    connecting(bleDeviceSession, action)
+                }
             }
-            ConnectionHandlerState.CONNECTING -> {
-                BleLogger.d(TAG, "state: $state action: $action")
-                connecting(bleDeviceSession, action)
-            }
+        } finally {
+            commandStateLock.unlock()
+            BleLogger.d(TAG, "commandState: lock released by ${Thread.currentThread().name}")
         }
     }
 
