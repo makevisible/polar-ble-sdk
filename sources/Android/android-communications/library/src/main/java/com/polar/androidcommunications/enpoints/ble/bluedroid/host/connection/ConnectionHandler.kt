@@ -299,8 +299,10 @@ class ConnectionHandler(
 
             ConnectionHandlerAction.DISCONNECT_DEVICE -> {
                 if (session != current) {
+                    BleLogger.d(TAG, "disconnectDevice: session != current")
                     handleDisconnectDevice(session)
                 } else {
+                    BleLogger.d(TAG, "disconnectDevice: session == current")
                     // cancel pending connection
                     connectionInterface.cancelDeviceConnection(session)
                     observer.deviceConnectionCancelled(session)
