@@ -2225,7 +2225,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                         }, onCompleted: {
                             completable(.completed)
                         }, onDisposed: {
-                            self.sendTerminateAndStopSyncNotifications(client: client)
+                            self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                         }
                     )
                 completable(.completed)
@@ -2345,7 +2345,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                       }, onCompleted: {
                           completable(.completed)
                       }, onDisposed: {
-                          self.sendTerminateAndStopSyncNotifications(client: client)
+                          self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                       }
                     )
                 completable(.completed)
@@ -2433,7 +2433,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                             setTimeCompletable
                                                 .subscribe(
                                                     onCompleted: {
-                                                        self.sendTerminateAndStopSyncNotifications(client: client)
+                                                        self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                                                         completable(.completed)
                                                     },
                                                     onError: { error in
@@ -2448,7 +2448,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             }
                         },
                         onDisposed: {
-                            self.sendTerminateAndStopSyncNotifications(client: client)
+                            self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                         }
                     )
 
@@ -2483,7 +2483,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .map { data -> Bool in
                     return try Data_PbUserIdentifier(serializedData: data as Data).hasMasterIdentifier
                 }.do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 })
         } catch let err {
             return Single.error(err)
@@ -2530,7 +2530,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "No BlePsFtpClient available"))
             }
-            self.sendInitializationAndStartSyncNotifications(client: client)
+            self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
             
             guard let deviceInfo = PolarFirmwareUpdateUtils.readDeviceFirmwareInfo(client: client, deviceId: identifier) else {
                 return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "Failed to read device firmware info"))
@@ -2876,7 +2876,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                BleLogger.error("Error setting local time: \(error)")
                                             },
                                             onDisposed: {
-                                                self.sendTerminateAndStopSyncNotifications(client: client)
+                                                self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                                                observer.onCompleted()
                                            }
                                        )
@@ -2935,7 +2935,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                     return stepsDataList.map { PolarStepsData(date: $0.0, steps: $0.1) }
                 }
             ).do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 })
         } catch {
             return Single.error(error)
@@ -2980,7 +2980,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                     return distanceDataList.map { PolarDistanceData(date: $0.0, distanceMeters: $0.1) }
                 }).do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 })
         } catch {
             return Single.error(error)
@@ -2997,7 +2997,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return sendInitializationAndStartSyncNotifications(client: client)
                 .andThen(PolarAutomaticSamplesUtils.read247HrSamples(client: client, fromDate: fromDate, toDate: toDate))
                 .do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                     })
         } catch {
             return Single.error(error)
@@ -3014,7 +3014,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return sendInitializationAndStartSyncNotifications(client: client)
                 .andThen(PolarAutomaticSamplesUtils.read247PPiSamples(client: client, fromDate: fromDate, toDate: toDate))
                 .do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 })
         } catch {
             return Single.error(error)
@@ -3053,7 +3053,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 .flatMap { _ in
                     Single.just(nightlyRechargeDataList)
                 }).do(onDispose: {
-                    self.sendTerminateAndStopSyncNotifications(client: client)
+                    self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                 })
         } catch {
             return Single.error(error)
@@ -3094,7 +3094,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                        PolarCaloriesData(date: date, calories: calories)
                    }
                }).do(onDispose: {
-                   self.sendTerminateAndStopSyncNotifications(client: client)
+                   self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                })
        } catch {
            return Single.error(error)
@@ -3275,7 +3275,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                       }, onCompleted: {
                           completable(.completed)
                       }, onDisposed: {
-                          self.sendTerminateAndStopSyncNotifications(client: client)
+                          self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                       }
                     )
                 completable(.completed)
@@ -3849,14 +3849,37 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
 
     private func sendInitializationAndStartSyncNotifications(client: BlePsFtpClient) -> Completable {
+        BleLogger.trace("sendInitializationAndStartSyncNotifications: Sending initialization and start sync notifications")
 
         return client.query(Protocol_PbPFtpQuery.requestSynchronization.rawValue, parameters: nil)
             .asCompletable()
+            .do(onError: { error in
+                BleLogger.error("sendInitializationAndStartSyncNotifications: requestSynchronization onError \(error)")
+            }, onCompleted: {
+                BleLogger.trace("sendInitializationAndStartSyncNotifications: requestSynchronization onCompleted")
+            })
             .andThen(client.sendNotification(Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue, parameters: nil))
+            .do(onError: { error in
+                BleLogger.error("sendInitializationAndStartSyncNotifications: initializeSession onError \(error)")
+            }, onCompleted: {
+                BleLogger.trace("sendInitializationAndStartSyncNotifications: initializeSession onCompleted")
+            })
             .andThen(client.sendNotification(Protocol_PbPFtpHostToDevNotification.startSync.rawValue, parameters: nil))
+            .do(onError: { error in
+                BleLogger.error("sendInitializationAndStartSyncNotifications: startSync onError \(error)")
+            }, onCompleted: {
+                BleLogger.trace("sendInitializationAndStartSyncNotifications: startSync onCompleted")
+            })
+            .do(onError: { error in
+                BleLogger.error("sendInitializationAndStartSyncNotifications: onError \(error)")
+            }, onCompleted: {
+                BleLogger.trace("sendInitializationAndStartSyncNotifications: onCompleted")
+            })
     }
 
     private func sendTerminateAndStopSyncNotifications(client: BlePsFtpClient) -> Completable {
+        BleLogger.trace("sendTerminateAndStopSyncNotifications: Sending terminate and stop sync notifications")
+
         var params = Protocol_PbPFtpStopSyncParams()
         var parameters: NSData
         params.completed = true
@@ -3872,6 +3895,11 @@ extension PolarBleApiImpl: PolarBleApi  {
         ).andThen(client.sendNotification(
             Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,parameters: nil
         ))
+        .do(onError: { error in
+            BleLogger.error("sendTerminateAndStopSyncNotifications: onError \(error)")
+        }, onCompleted: {
+            BleLogger.trace("sendTerminateAndStopSyncNotifications: onCompleted")
+        })
     }
 
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
