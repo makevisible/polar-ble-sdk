@@ -31,7 +31,7 @@ public class BleLogger {
     public static func trace(_ strings: String...){
         sharedInstance.queue.async(execute: {
             if( sharedInstance.logger != nil && (sharedInstance.logLevel & BleLogger.LOG_LEVEL_TRACE) != 0 ){
-                let fullLog = "[BLE] " + strings.joined(separator: " ")
+                let fullLog = "D [BLE] " + strings.joined(separator: " ")
                 sharedInstance.logger?.logMessage(fullLog)
             }
         })
@@ -40,7 +40,7 @@ public class BleLogger {
     public static func error(_ strings: String...){
         sharedInstance.queue.async(execute: {
             if( sharedInstance.logger != nil && (sharedInstance.logLevel & BleLogger.LOG_LEVEL_ERROR) != 0 ){
-                let fullLog = "[BLE][ERROR] " + strings.joined(separator: " ")
+                let fullLog = "E [BLE] " + strings.joined(separator: " ")
                 sharedInstance.logger?.logMessage(fullLog)
             }
         })
@@ -50,7 +50,7 @@ public class BleLogger {
         if error != nil {
             sharedInstance.queue.async(execute: {
                 if( sharedInstance.logger != nil && (sharedInstance.logLevel & BleLogger.LOG_LEVEL_ERROR) != 0 ){
-                    sharedInstance.logger?.logMessage("[BLE][ERROR] " + message + " err: " + (error?.localizedDescription)!)
+                    sharedInstance.logger?.logMessage("E [BLE] " + message + " err: " + (error?.localizedDescription)!)
                 }
             })
         }
@@ -59,7 +59,7 @@ public class BleLogger {
     public static func trace_hex(_ message: String, data: Data) {
         sharedInstance.queue.async(execute: {
             if( sharedInstance.logger != nil && (sharedInstance.logLevel & BleLogger.LOG_LEVEL_HEX) != 0 ){
-                let logStr = (message + " HEX " + data.compactMap { (byte) -> String in
+                let logStr = ("D [BLE] " + message + " HEX " + data.compactMap { (byte) -> String in
                     return String(format: "%02X", byte)
                 }.joined(separator: " "))
                 sharedInstance.logger?.logMessage(logStr)
@@ -70,7 +70,7 @@ public class BleLogger {
     public static func trace_hex(_ message: String, data: [UInt8]) {
         sharedInstance.queue.async(execute: {
             if( sharedInstance.logger != nil && (sharedInstance.logLevel & BleLogger.LOG_LEVEL_HEX) != 0 ){
-                let logStr = (message + " HEX " + data.compactMap { (byte) -> String in
+                let logStr = ("D [BLE] " + message + " HEX " + data.compactMap { (byte) -> String in
                    return String(format: "%02X", byte)
                }.joined(separator: " "))
                sharedInstance.logger?.logMessage(logStr)
