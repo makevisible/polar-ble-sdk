@@ -195,27 +195,27 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         listener = bdDeviceListenerImpl
         setLoggerInterface(object : BleLogger.BleLoggerInterface {
             override fun d(tag: String, msg: String) {
-                log("$tag/$msg")
+                log("D [$tag] $msg")
             }
 
             override fun e(tag: String, msg: String) {
-                logError("$tag/$msg")
+                logError("E [$tag] $msg")
             }
 
             override fun w(tag: String, msg: String) {
-                log("$tag/$msg")
+                log("W [$tag] $msg")
             }
 
             override fun i(tag: String, msg: String) {
-                log("$tag/$msg")
+                log("I [$tag] $msg")
             }
 
             override fun d_hex(tag: String, msg: String, data: ByteArray) {
-                log("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
+                log("D [$tag] $msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
             }
 
             override fun e_hex(tag: String, msg: String, data: ByteArray) {
-                logError("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
+                logError("E [$tag] $msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
             }
         })
 
