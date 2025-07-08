@@ -475,4 +475,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return [Completable] emitting success when connected or error if the connection fails
      */
     abstract fun waitForConnection(identifier: String): Completable
+
+    abstract fun startFastBle(identifier: String, sync: Boolean): Completable
+    abstract fun stopFastBle(identifier: String, sync: Boolean): Completable
 }
