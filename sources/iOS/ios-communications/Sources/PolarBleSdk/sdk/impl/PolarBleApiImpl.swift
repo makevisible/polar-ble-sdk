@@ -3905,64 +3905,51 @@ extension PolarBleApiImpl: PolarBleApi  {
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
         BleLogger.trace("writeFirmwareToDevice(): deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
         return Observable.create { observer in
-            
-            guard let session = try? self.sessionFtpClientReady(deviceId) else {
-                observer.onError(PolarErrors.deviceNotConnected)
-                return Disposables.create()
-            }
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                observer.onError(PolarErrors.serviceNotFound)
-                return Disposables.create()
-            }
+            do {
+                let session = try self.sessionFtpClientReady(deviceId)
+                guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                    throw PolarErrors.serviceNotFound
+                }
 
-            BleLogger.trace("Initialize session")
-            return client.query(Protocol_PbPFtpQuery.prepareFirmwareUpdate.rawValue, parameters: nil).asCompletable()
-                .andThen(Completable.create { completable in
-                    do {
-                        BleLogger.trace("Start \(firmwareFilePath) write")
-                        var builder = Protocol_PbPFtpOperation()
-                        builder.command = Protocol_PbPFtpOperation.Command.put
-                        builder.path = firmwareFilePath
-                        let proto = try builder.serializedData()
-                        
-                        _ = client.write(proto as NSData, data: InputStream(data: firmwareBytes))
-                            .throttle(.seconds(5), scheduler: MainScheduler.instance)
-                            .do(onNext: { bytesWritten in
-                                BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
-                                observer.onNext(UInt(bytesWritten))
-                            })
-                            .ignoreElements()
-                            .asCompletable()
-                            .subscribe(onCompleted: {
-                                if firmwareFilePath.contains("SYSUPDAT.IMG") {
-                                    BleLogger.trace("Firmware file is SYSUPDAT.IMG, waiting for reboot")
-                                }
-                                observer.onCompleted()
-                                completable(.completed)
-                            }, onError: { error in
-                                if let pftpError = Protocol_PbPFtpError(rawValue: error._code) {
-                                    if pftpError == .batteryTooLow {
-                                        observer.onError(PolarErrors.deviceError(description: "Battery too low to perform firmware update"))
-                                    } else {
-                                        BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
-                                        observer.onError(error)
-                                    }
-                                } else {
-                                    BleLogger.error("PFTP error during firmware write: \(error.localizedDescription)")
-                                    observer.onError(error)
-                                }
-                                completable(.error(error))
-                            })
-                    } catch {
-                        completable(.error(error))
-                    }
-                    return Disposables.create()
+                BleLogger.trace("writeFirmwareToDevice(): Initialize session")
+                // self.sendInitializationAndStartSyncNotifications(client: client)
+                // sleep(1) // Some race condition here?
+                BleLogger.trace("writeFirmwareToDevice(): Start \(firmwareFilePath) write")
+
+                var builder = Protocol_PbPFtpOperation()
+                builder.command = Protocol_PbPFtpOperation.Command.put
+                builder.path = firmwareFilePath
+                let proto = try builder.serializedData()
+                return client.write(
+                    proto as NSData,
+                    data: InputStream(data: firmwareBytes)
+                )
+                .throttle(.seconds(5), scheduler: MainScheduler.instance)
+                .do(onNext: { bytesWritten in
+                    BleLogger.trace("Writing firmware update file, bytes written: \(bytesWritten)/\(firmwareBytes.count)")
+                    observer.onNext(UInt(bytesWritten))
                 })
+                .ignoreElements()
+                .asCompletable()
                 .subscribe(onCompleted: {
+                    if firmwareFilePath.contains("SYSUPDAT.IMG") {
+                        BleLogger.trace("writeFirmwareToDevice(): Firmware file is SYSUPDAT.IMG, waiting for reboot")
+                    }
                     observer.onCompleted()
                 }, onError: { error in
-                    observer.onError(error)
+                    BleLogger.trace("writeFirmwareToDevice(): ERROR: \(error.localizedDescription)")
+                    if (error.localizedDescription.contains("ResponseError error 1")) {
+                        observer.onCompleted()
+                    } else {
+                        BleLogger.trace("writeFirmwareToDevice(): Error in writeFirmwareToDevice(): \(error.localizedDescription)")
+                        observer.onError(error)
+                    }
                 })
+            } catch {
+                observer.onError(error)
+            }
+            
+            return Disposables.create()
         }
     }
 
