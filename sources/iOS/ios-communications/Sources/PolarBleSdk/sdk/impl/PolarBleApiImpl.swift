@@ -741,7 +741,7 @@ import UIKit
             }
     }
 
-    func startFastBle(identifier: String, sync: Bool) -> Completable {
+    func startFastBle(identifier: String) -> Completable {
         BleLogger.trace("startFastBle: sending initialization notification")
         guard let session = try? self.sessionFtpClientReady(identifier) else {
             BleLogger.error("startFastBle: failed to get session")
@@ -766,24 +766,10 @@ import UIKit
                 BleLogger.error("startFastBle: failed to send initialize session notification: \(error)")
                 return Completable.empty()
             }
-        }.andThen(Completable.deferred {
-            if sync {
-                BleLogger.trace("startFastBle: sync flag true, sending start sync notification")
-                return client.sendNotification(
-                    Protocol_PbPFtpHostToDevNotification.startSync.rawValue,
-                    parameters: nil
-                ).do(onError: { error in
-                    BleLogger.error("startFastBle: failed to send start sync notification: \(error)")
-                }, onCompleted: {
-                    BleLogger.trace("startFastBle: startSync onCompleted")
-                })
-            } else {
-                return Completable.empty()
-            }
-        })
+        }
     }
 
-    func stopFastBle(identifier: String, sync: Bool) -> Completable {
+    func stopFastBle(identifier: String) -> Completable {
         BleLogger.trace("stopFastBle: sending terminate session notification")
         guard let session = try? self.sessionFtpClientReady(identifier) else {
             BleLogger.error("stopFastBle: failed to get session")
@@ -808,28 +794,7 @@ import UIKit
                 BleLogger.error("stopFastBle: failed to send terminate session notification (try-catch): \(error)")
                 return Completable.empty()
             }
-        }.andThen(Completable.deferred {
-            if sync {
-                BleLogger.trace("stopFastBle: sync flag true, sending stop sync notification")
-                var params = Protocol_PbPFtpStopSyncParams()
-                params.completed = true
-                do {
-                    return client.sendNotification(
-                        Protocol_PbPFtpHostToDevNotification.stopSync.rawValue,
-                        parameters: try params.serializedData() as NSData
-                    ).do(onError: { error in
-                        BleLogger.error("stopFastBle: failed to send stop sync notification: \(error)")
-                    }, onCompleted: {
-                        BleLogger.trace("stopFastBle: stopSync onCompleted")
-                    })
-                } catch {
-                    BleLogger.error("stopFastBle: failed to serialize stop sync parameters: \(error)")
-                    return Completable.empty()
-                }
-            } else {
-                return Completable.empty()
-            }
-        })
+        }
     }
 }
 
