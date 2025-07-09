@@ -488,4 +488,7 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// Note that firmware update (FWU) turns on automatic reconnection automatically, and restores the setting
     /// automatically when operation completes. One should not change this setting during FWU.
     var automaticReconnection: Bool { get set }
+
+    func startFastBle(identifier: String, sync: Bool) -> Completable
+    func stopFastBle(identifier: String, sync: Bool) -> Completable
 }
