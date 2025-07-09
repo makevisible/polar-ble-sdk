@@ -477,6 +477,6 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      */
     abstract fun waitForConnection(identifier: String): Completable
 
-    abstract fun startFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable
-    abstract fun stopFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable
+    abstract fun startFastBle(identifier: String, scheduler: Scheduler): Completable
+    abstract fun stopFastBle(identifier: String, scheduler: Scheduler): Completable
 }
