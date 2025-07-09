@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|  
     s.name              = 'PolarBleSdk'
-    s.version           = '6.4.8'
+    s.version           = '6.4.11'
     s.summary           = 'SDK for Polar sensors'
     s.homepage          = 'https://github.com/makevisible/polar-ble-sdk'
     s.license           = { :type => 'Custom', :file => 'Polar_SDK_License.txt' }
