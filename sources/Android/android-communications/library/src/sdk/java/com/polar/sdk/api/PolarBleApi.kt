@@ -13,6 +13,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.io.ByteArrayOutputStream
+import io.reactivex.rxjava3.core.Scheduler
 
 /**
  * Polar BLE API.
@@ -476,6 +477,6 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      */
     abstract fun waitForConnection(identifier: String): Completable
 
-    abstract fun startFastBle(identifier: String, sync: Boolean): Completable
-    abstract fun stopFastBle(identifier: String, sync: Boolean): Completable
+    abstract fun startFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable
+    abstract fun stopFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable
 }

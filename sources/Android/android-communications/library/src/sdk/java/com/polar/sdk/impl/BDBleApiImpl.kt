@@ -134,7 +134,6 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
-
 /**
  * The default implementation of the Polar API
  * @Suppress
@@ -4592,7 +4591,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
-    override fun startFastBle(identifier: String, sync: Boolean): Completable {
+    override fun startFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable {
         BleLogger.d(TAG, "startFastBle: sending initialization notification (visible)")
         val session = try {
             sessionPsFtpClientReady(identifier)
@@ -4605,13 +4604,13 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         return Completable.defer {
             client.sendNotification(
-                PftpNotification.PbPFtpHostToDevNotification.INITIALIZE_SESSION_VALUE, null
+                PftpNotification.PbPFtpHostToDevNotification.INITIALIZE_SESSION_VALUE, null, scheduler
             ).doOnError { error ->
                 BleLogger.e(TAG, "startFastBle: failed to send initialize session notification: $error")
             }.andThen(
                 if (sync) {
                     BleLogger.d(TAG, "startFastBle: sync flag true, sending start sync notification")
-                    client.sendNotification(PftpNotification.PbPFtpHostToDevNotification.START_SYNC_VALUE, null)
+                    client.sendNotification(PftpNotification.PbPFtpHostToDevNotification.START_SYNC_VALUE, null, scheduler)
                         .doOnError { error ->
                             BleLogger.e(TAG, "startFastBle: failed to send start sync notification: $error")
                         }
@@ -4622,7 +4621,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
-    override fun stopFastBle(identifier: String, sync: Boolean): Completable {
+    override fun stopFastBle(identifier: String, sync: Boolean, scheduler: Scheduler): Completable {
         BleLogger.d(TAG, "stopFastBle: sending terminate session notification (visible)")
         val session = try {
             sessionPsFtpClientReady(identifier)
@@ -4635,7 +4634,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         return Completable.defer {
             client.sendNotification(
-                PftpNotification.PbPFtpHostToDevNotification.TERMINATE_SESSION_VALUE, null
+                PftpNotification.PbPFtpHostToDevNotification.TERMINATE_SESSION_VALUE, null, scheduler
             ).doOnError { error ->
                 BleLogger.e(TAG, "stopFastBle: failed to send terminate session notification: $error")
             }.andThen(
@@ -4643,7 +4642,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     BleLogger.d(TAG, "stopFastBle: sync flag true, sending stop sync notification")
                     client.sendNotification(
                         PftpNotification.PbPFtpHostToDevNotification.STOP_SYNC_VALUE,
-                        PbPFtpStopSyncParams.newBuilder().setCompleted(true).build().toByteArray()
+                        PbPFtpStopSyncParams.newBuilder().setCompleted(true).build().toByteArray(),
+                        scheduler
                     ).doOnError { error ->
                         BleLogger.e(TAG, "stopFastBle: failed to send stop sync notification: $error")
                     }
