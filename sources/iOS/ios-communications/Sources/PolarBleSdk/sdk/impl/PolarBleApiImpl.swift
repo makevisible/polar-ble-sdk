@@ -740,6 +740,62 @@ import UIKit
                 }
             }
     }
+
+    func startFastBle(identifier: String) -> Completable {
+        BleLogger.trace("startFastBle: sending initialization notification")
+        guard let session = try? self.sessionFtpClientReady(identifier) else {
+            BleLogger.error("startFastBle: failed to get session")
+            return Completable.error(PolarErrors.deviceNotConnected)
+        }
+        guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+            BleLogger.error("startFastBle: failed to get client")
+            return Completable.error(PolarErrors.serviceNotFound)
+        }
+        return Completable.deferred {
+            do {
+                BleLogger.trace("startFastBle: sending initialize session notification")
+                return client.sendNotification(
+                    Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue,
+                    parameters: nil
+                ).do(onError: { error in
+                    BleLogger.error("startFastBle: failed to send initialize session notification: \(error)")
+                }, onCompleted: {
+                    BleLogger.trace("startFastBle: initializeSession onCompleted")
+                })
+            } catch {
+                BleLogger.error("startFastBle: failed to send initialize session notification: \(error)")
+                return Completable.empty()
+            }
+        }
+    }
+
+    func stopFastBle(identifier: String) -> Completable {
+        BleLogger.trace("stopFastBle: sending terminate session notification")
+        guard let session = try? self.sessionFtpClientReady(identifier) else {
+            BleLogger.error("stopFastBle: failed to get session")
+            return Completable.error(PolarErrors.deviceNotConnected)
+        }
+        guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+            BleLogger.error("stopFastBle: failed to get client")
+            return Completable.error(PolarErrors.serviceNotFound)
+        }
+        return Completable.deferred {
+            do {
+                BleLogger.trace("stopFastBle: sending terminate session notification")
+                return client.sendNotification(
+                    Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
+                    parameters: nil
+                ).do(onError: { error in
+                    BleLogger.error("stopFastBle: failed to send terminate session notification: \(error)")
+                }, onCompleted: {
+                    BleLogger.trace("stopFastBle: terminateSession onCompleted")
+                })
+            } catch {
+                BleLogger.error("stopFastBle: failed to send terminate session notification (try-catch): \(error)")
+                return Completable.empty()
+            }
+        }
+    }
 }
 
 extension PolarBleApiImpl: BleLoggerProtocol {
@@ -1445,10 +1501,6 @@ extension PolarBleApiImpl: PolarBleApi  {
 
                   let processingObservable = subRecordingCountObservable
                       .flatMap { count -> Observable<PolarOfflineRecordingData> in
-                          let notificationResult = self.sendInitializationAndStartSyncNotifications(client: client)
-                          
-                          return notificationResult
-                              .andThen(
                           Observable.range(start: 0, count: count)
                               .flatMap { subRecordingIndex -> Observable<PolarOfflineRecordingData> in
                                   Observable.create { observer in
@@ -1532,7 +1584,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                                       return Disposables.create { }
                                   }
                               }
-                          )
                       }
                       .ignoreElements()
                       .asCompletable()
@@ -1563,9 +1614,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                           ).subscribe()
                           
                           single(.failure(error))
-                      },
-                      onDisposed: {
-                          self.sendTerminateAndStopSyncNotifications(client: client)
                       }
                   )
 
@@ -1590,7 +1638,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let directoryPath = entry.path.components(separatedBy: "/").dropLast().joined(separator: "/") + "/"
                 let fileType = try self.mapDeviceDataTypeToOfflineRecordingFileName(type: entry.type)
                 operation.path = directoryPath
-                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 _ = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
@@ -1604,9 +1651,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                         },
                         onFailure: { error in
                             single(.failure(error))
-                        },
-                        onDisposed: {
-                            self.sendTerminateAndStopSyncNotifications(client: client)
                         }
                     )
             } catch {
@@ -1635,7 +1679,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                 if let lastSlashIndex = entry.path.dropLast().lastIndex(of: "/") {
                     parentDir = String(entry.path[...lastSlashIndex])
                 }
-                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 _ = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
@@ -1654,9 +1697,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                         },
                         onFailure: { error in
                             single(.failure(error))
-                        },
-                        onDisposed: {
-                            self.sendTerminateAndStopSyncNotifications(client: client)
                         }
                     )
             } catch {
@@ -2378,7 +2418,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let ftuData = Data(ftuConfigProto)
                 let ftuInputStream = InputStream(data: ftuData)
 
-                self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                 client.write(ftuProto as NSData, data: ftuInputStream)
                     .subscribe(
                         onError: { error in
@@ -2433,7 +2472,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                                             setTimeCompletable
                                                 .subscribe(
                                                     onCompleted: {
-                                                        self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                                                         completable(.completed)
                                                     },
                                                     onError: { error in
@@ -2446,9 +2484,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 BleLogger.error("Error processing User ID for device: \(identifier) - \(error.localizedDescription)")
                                 completable(.error(error))
                             }
-                        },
-                        onDisposed: {
-                            self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                         }
                     )
 
@@ -2530,7 +2565,6 @@ extension PolarBleApiImpl: PolarBleApi  {
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "No BlePsFtpClient available"))
             }
-            self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
             
             guard let deviceInfo = PolarFirmwareUpdateUtils.readDeviceFirmwareInfo(client: client, deviceId: identifier) else {
                 return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "Failed to read device firmware info"))
@@ -2599,9 +2633,8 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                 }
                 return Disposables.create()
-            }.do(onDispose: {
-                self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
-            })
+            }
+            
         } catch {
             BleLogger.error("Error during firmware update check: \(error)")
             return Observable.just(CheckFirmwareUpdateStatus.checkFwUpdateFailed(details: "Error: \(error.localizedDescription)"))
@@ -2708,7 +2741,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                         let automaticReconnection = self.automaticReconnection
                         self.automaticReconnection = true
                         
-                        self.sendInitializationAndStartSyncNotifications(client: client).subscribe()
                         backupManager.backupDevice()
                             .asObservable()
                             .flatMap { content -> Observable<FirmwareUpdateStatus> in
@@ -2876,7 +2908,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                BleLogger.error("Error setting local time: \(error)")
                                             },
                                             onDisposed: {
-                                                self.sendTerminateAndStopSyncNotifications(client: client).subscribe()
                                                observer.onCompleted()
                                            }
                                        )
@@ -3911,9 +3942,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                     throw PolarErrors.serviceNotFound
                 }
 
-                BleLogger.trace("writeFirmwareToDevice(): Initialize session")
-                // self.sendInitializationAndStartSyncNotifications(client: client)
-                // sleep(1) // Some race condition here?
                 BleLogger.trace("writeFirmwareToDevice(): Start \(firmwareFilePath) write")
 
                 var builder = Protocol_PbPFtpOperation()
