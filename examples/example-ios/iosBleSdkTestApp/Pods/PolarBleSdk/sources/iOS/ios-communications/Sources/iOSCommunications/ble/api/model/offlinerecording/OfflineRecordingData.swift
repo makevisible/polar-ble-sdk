@@ -33,8 +33,8 @@ public struct OfflineRecordingData<DataType> {
     let recordingSettings: PmdSetting?
     let data: DataType
     
-    public static func parseDataFromOfflineFile(fileData: Data, type: PmdMeasurementType, secret: PmdSecret? = nil) throws -> OfflineRecordingData<Any> {
-        BleLogger.trace("Start offline file parsing. File size is \(fileData.count) and type \(type)")
+    public static func parseDataFromOfflineFile(fileData: Data, type: PmdMeasurementType, secret: PmdSecret? = nil, lastTimestamp: UInt64 = 0) throws -> OfflineRecordingData<Any> {
+        BleLogger.trace("Start offline file parsing. File size is \(fileData.count) and type \(type), previous file last timestamp: \(lastTimestamp)")
         
         guard !fileData.isEmpty else {
             throw OfflineRecordingError.emptyFile
@@ -46,20 +46,22 @@ public struct OfflineRecordingData<DataType> {
         } catch {
             throw OfflineRecordingError.offlineRecordingErrorMetaDataParseFailed(description: "\(error)")
         }
+
+        var payloadDataBytes: Data = Data()
         
-        let payloadDataBytes = fileData.subdata(in: metaDataLength..<fileData.count)
-        
-        guard !payloadDataBytes.isEmpty else {
-            throw OfflineRecordingError.offlineRecordingNoPayloadData
+        if (metaDataLength < fileData.count) {
+            payloadDataBytes = fileData.subdata(in: metaDataLength..<fileData.count)
+            let parsedData = try parseData(
+                dataBytes: payloadDataBytes,
+                metaData: metaData,
+                builder: try getDataBuilder(type: type),
+                lastTimestamp: lastTimestamp
+            )
+
+            return OfflineRecordingData<Any>(offlineRecordingHeader: metaData.offlineRecordingHeader, startTime: metaData.startTime, recordingSettings: metaData.recordingSettings,  data: parsedData)
         }
         
-        let parsedData = try parseData(
-            dataBytes: payloadDataBytes,
-            metaData: metaData,
-            builder: try getDataBuilder(type: type)
-        )
-        
-        return OfflineRecordingData<Any>(offlineRecordingHeader: metaData.offlineRecordingHeader, startTime: metaData.startTime, recordingSettings: metaData.recordingSettings,  data: parsedData)
+        return OfflineRecordingData<Any>(offlineRecordingHeader: metaData.offlineRecordingHeader, startTime: metaData.startTime, recordingSettings: metaData.recordingSettings,  data: EmptyData())
     }
     
     private static func getDataBuilder(type: PmdMeasurementType) throws -> Any {
@@ -78,6 +80,10 @@ public struct OfflineRecordingData<DataType> {
             return MagData()
         case .offline_hr:
             return OfflineHrData()
+        case .temperature:
+            return TemperatureData()
+        case .skinTemperature:
+            return SkinTemperatureData()
         default:
             throw OfflineRecordingError.offlineRecordingErrorNoParserForData
         }
@@ -110,9 +116,14 @@ public struct OfflineRecordingData<DataType> {
         // padding bytes
         let paddingBytes1Length = parsePaddingBytes(metaDataOffset: metaDataOffset, offlineRecordingSecurityStrategy: offlineRecordingSecurityStrategy)
         metaDataOffset += paddingBytes1Length
-        
-        let dataPayloadSize = try parsePacketSize(packetSize: metaDataBytes.subdataSafe(in: metaDataOffset..<(metaDataOffset + PACKET_SIZE_LENGTH)))
-        metaDataOffset += PACKET_SIZE_LENGTH
+
+        var dataPayloadSize: Int
+        if (metaDataOffset >= metaDataBytes.count ) {
+            dataPayloadSize = 0
+        } else {
+            dataPayloadSize = try parsePacketSize(packetSize: metaDataBytes.subdataSafe(in: metaDataOffset..<(metaDataOffset + PACKET_SIZE_LENGTH)))
+            metaDataOffset += PACKET_SIZE_LENGTH
+        }
         
         let paddingBytes2Length = parsePaddingBytes(metaDataOffset: metaDataOffset, offlineRecordingSecurityStrategy: offlineRecordingSecurityStrategy)
         metaDataOffset += paddingBytes2Length
@@ -253,8 +264,8 @@ public struct OfflineRecordingData<DataType> {
         return Int(TypeUtils.convertArrayToUnsignedInt(packetSize, offset: 0, size: 2))
     }
     
-    private static func parseData(dataBytes: Data, metaData: OfflineRecordingMetaData, builder: Any) throws -> Any {
-        var previousTimeStamp: UInt64 = 0
+    private static func parseData(dataBytes: Data, metaData: OfflineRecordingMetaData, builder: Any, lastTimestamp: UInt64 = 0) throws -> Any {
+        var previousTimeStamp: UInt64 = lastTimestamp
         
         var packetSize = metaData.dataPayloadSize
         let sampleRate = UInt(metaData.recordingSettings?.settings[PmdSetting.PmdSettingType.sampleRate]?.first ?? 0)
@@ -273,12 +284,11 @@ public struct OfflineRecordingData<DataType> {
             let data = try decryptedData.subdataSafe(in:offset..<(packetSize + offset))
             offset += packetSize
             let dataFrame = try PmdDataFrame(data:data,
-                                             { _ in previousTimeStamp }  ,
+                                             { _,_  in previousTimeStamp },
                                              { _ in factor },
                                              { _ in sampleRate })
             
             previousTimeStamp = dataFrame.timeStamp
-            
             switch(builder) {
             case is EcgData:
                 let ecgData =  try EcgData.parseDataFromDataFrame(frame: dataFrame)
@@ -301,6 +311,12 @@ public struct OfflineRecordingData<DataType> {
             case is OfflineHrData:
                 let offlineHrData =  try OfflineHrData.parseDataFromDataFrame(frame: dataFrame)
                 (builder as! OfflineHrData).samples.append(contentsOf: offlineHrData.samples)
+            case is TemperatureData:
+                let temperatureData =  try TemperatureData.parseDataFromDataFrame(frame: dataFrame)
+                (builder as! TemperatureData).samples.append(contentsOf: temperatureData.samples)
+            case is SkinTemperatureData:
+                let skinTemperatureData =  try SkinTemperatureData.parseDataFromDataFrame(frame: dataFrame)
+                (builder as! SkinTemperatureData).samples.append(contentsOf: skinTemperatureData.samples)
             default:
                 throw OfflineRecordingError.offlineRecordingErrorSecretMissing
             }

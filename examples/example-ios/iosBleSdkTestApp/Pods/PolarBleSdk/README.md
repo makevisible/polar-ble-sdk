@@ -1,75 +1,42 @@
-# SDK for Polar sensors
+# SDK for Polar sensors and watches
 
-This is the official repository of Polar's software development kit. With this SDK you are able to develop your own Android and iOS applications for sensors made by Polar.
+This is the official repository of Polar's software development kit. With this SDK you are able to develop your own Android and iOS applications for sensors and watches made by Polar.
 
 The SDK API uses ReactiveX. You can read more about ReactiveX from their website [reactivex](http://reactivex.io)
 
-- [Features](#features)
-- [Project structure](#project-structure)
-- [Android getting started](#android-getting-started)
-- [iOS getting started](#ios-getting-started)
-- [Migration Guides](#migration-guides)
-- [Collaboration](#collaboration)
-- [License](#license)
-- [Third-party code and licenses](#third-party-code-and-licenses)
+- [SDK for Polar sensors and watches](#sdk-for-polar-sensors-and-watches)
+  - [Supported products](#supported-products)
+  - [Project structure](#project-structure)
+  - [Android getting started](#android-getting-started)
+    - [Installation](#installation)
+    - [Code example: Heart rate](#code-example-heart-rate)
+      - [Key things](#key-things)
+  - [iOS getting started](#ios-getting-started)
+    - [Requirements](#requirements)
+    - [Dependencies](#dependencies)
+    - [Installation](#installation-1)
+      - [CocoaPods](#cocoapods)
+      - [Swift Package Manager](#swift-package-manager)
+      - [Carthage](#carthage)
+    - [Setup your application](#setup-your-application)
+    - [Code example: Heart rate](#code-example-heart-rate-1)
+      - [Key things](#key-things-1)
+  - [Migration guides](#migration-guides)
+  - [Collaboration](#collaboration)
+  - [License](#license)
+    - [Quick License Summary / Your rights to use the SDK](#quick-license-summary--your-rights-to-use-the-sdk)
+  - [Third-party code and licenses](#third-party-code-and-licenses)
 
-## Features 
-### H10 Heart rate sensor
-Most accurate Heart rate sensor in the markets. The H10 is used in the Getting started section of this page. 
-[Store page](https://www.polar.com/en/sensors/h10-heart-rate-sensor)
+## Supported products
 
-#### H10 features available by the SDK
-* Heart rate as beats per minute and RR Interval in ms.
-* Heart rate broadcast.
-* Electrocardiography (ECG) data in µV with sample rate 130Hz.
-* Accelerometer data with sample rates of 25Hz, 50Hz, 100Hz and 200Hz and range of 2G, 4G and 8G. Axis specific acceleration data in mG.
-* Start and stop of internal recording and request for internal recording status. Recording supports RR, HR with one second sampletime or HR with five second sampletime.
-* List, read and remove for stored internal recording (sensor supports only one recording at the time).
-
-### H9 Heart rate sensor 
-Reliable high quality heart rate chest strap.
-[Store page](https://www.polar.com/en/sensors/h9-heart-rate-sensor)
-
-#### H9 features available by the SDK
-* Heart rate as beats per minute and RR Interval in ms.
-* Heart rate broadcast.
-
-### Polar Verity Sense Optical heart rate sensor
-Optical heart rate sensor is a rechargeable device that measures user’s heart rate with LED technology.
-[Store page](https://www.polar.com/en/products/accessories/polar-verity-sense)
-
-#### Polar Verity Sense features available by the SDK
-* Heart rate as beats per minute. 
-* Heart rate broadcast.
-* Photoplethysmograpy (PPG) values.
-* PP interval (milliseconds) representing cardiac pulse-to-pulse interval extracted from PPG signal.
-* Accelerometer data with sample rate of 52Hz and range of 8G. Axis specific acceleration data in mG.
-* Gyroscope data with sample rate of 52Hz and ranges of 250dps, 500dps, 1000dps and 2000dps. Axis specific gyroscope data in dps.
-* Magnetometer data with sample rates of 10Hz, 20Hz, 50HZ and 100Hz and range of +/-50 Gauss. Axis specific magnetometer data in Gauss.
-* [SDK mode](documentation/SdkModeExplained.md) (from version 1.1.5 onwards)
-* [Offline recording](documentation/OfflineRecordingExplained.md) (from version 2.1.0 onwards)
-
-### OH1 Optical heart rate sensor
-Optical heart rate sensor is a rechargeable device that measures user’s heart rate with LED technology.
-[Store page](https://www.polar.com/us-en/products/accessories/oh1-optical-heart-rate-sensor)
-
-#### OH1 features available by the SDK
-* Heart rate as beats per minute.
-* Heart rate broadcast.
-* Photoplethysmograpy (PPG) values.
-* PP interval (milliseconds) representing cardiac pulse-to-pulse interval extracted from PPG signal.
-* Accelerometer data with samplerate of 50Hz and range of 8G. Axis specific acceleration data in mG.
-
-### Ignite 3 watch
-Fitness and wellness watch.
-[Store page](https://www.polar.com/en/ignite3)
-
-#### Polar Ignite 3 features available by the SDK
-* SDK compatibility added to Ignite 3 in firmware update 2.0.14. 
-* Heart rate as beats per minute.
-* Heart rate broadcast.
-* PP interval (milliseconds) representing cardiac pulse-to-pulse interval extracted from PPG signal.
-* Accelerometer data with sample rate of 50 Hz and range of 8 G. Axis specific acceleration data in mG.
+- [Polar 360](./documentation/products/Polar360.md)
+- [Polar H10](./documentation/products/PolarH10.md)
+- [Polar H9](./documentation/products/PolarH9.md)
+- [Polar Verity Sense](./documentation/products/PolarVeritySense.md)
+- [Polar OH1](./documentation/products/PolarOH1.md)
+- [Polar Ignite 3](./documentation/products/PolarIgnite3.md)
+- [Polar Vantage V3, Vantage M3 and Polar Grit X2 Pro](./documentation/products/PolarVantageV3andGritX2Pro.md)
+- [Polar Pacer and Polar Pacer Pro](./documentation/products/PolarPacerAndPacerPro.md)
 
 ## Project structure
 * [polar-sdk-ios](polar-sdk-ios/) contains source documentation for the iOS SDK source
@@ -79,7 +46,7 @@ Fitness and wellness watch.
 * [documentation](documentation/) contains documentation related to SDK
 
 ## Android getting started
-Detailed documentation: [Documentation](polar-sdk-android/docs/)
+Detailed documentation: [Documentation](https://polarofficial.github.io/polar-ble-sdk/)
 ### Installation
 
 1.  In `build.gradle` make sure the __minSdk__ is set to __24__ or higher.
@@ -152,6 +119,9 @@ dependencies {
     <uses-permission
         android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="30" />
+
+      <!-- Allow Polar SDK to check and download firmware updates. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
 ```
 
@@ -251,7 +221,7 @@ public override fun onDestroy() {
 4.  Connect to a Polar device using  `api.connectToDevice(<DEVICE_ID>)` where <DEVICE_ID> is the deviceID printed to your sensor,  using  `api.autoConnectToDevice(-50, null, null).subscribe()`  to connect nearby device or  `api.searchForDevice()` to scan and then select the device
 
 ## iOS getting started
-Detailed documentation: [Documentation](polar-sdk-ios/docs/). Minimum iOS version is 14.
+Detailed documentation: [Documentation](https://polarofficial.github.io/polar-ble-sdk/). Minimum iOS version is 14.
 ### Requirements
 * Xcode 12.x
 * Swift 5.x

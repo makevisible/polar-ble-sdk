@@ -13,6 +13,9 @@ public enum PolarDeviceDataType: CaseIterable {
     case gyro
     case magnetometer
     case hr
+    case temperature
+    case pressure
+    case skinTemperature
 }
 
 /// Features available in Polar BLE SDK library
@@ -43,7 +46,27 @@ public enum PolarBleSdkFeature: CaseIterable {
 
     /// Feature to enable or disable SDK mode blinking LED animation.
     case feature_polar_led_animation
+
+    /// Firmware update for Polar device.
+    case feature_polar_firmware_update
+
+    /// Feature to receive activity data from Polar device.
+    case feature_polar_activity_data
 }
+
+///
+///The activity recording data types available in Polar devices.
+///
+public enum PolarActivityDataType: String, CaseIterable {
+    case SLEEP
+    case STEPS
+    case CALORIES
+    case HR_SAMPLES
+    case NIGHTLY_RECHARGE
+    case SKINTEMPERATURE
+    case PEAKTOPEAKINTERVAL
+    case NONE
+   }
 
 /// Polar device info
 ///
@@ -62,74 +85,79 @@ public typealias PolarHrBroadcastData = (deviceInfo: PolarDeviceInfo, hr: UInt8,
 /// Polar hr data
 ///
 ///     - hr in BPM
+///     - ppgQuality PPG signal quality of the real time HR between 0 and 100
+///     - correctedHr Corrected value of the real time HR value. 0 if unavailable.
 ///     - rrsMs RR interval in ms. R is a the top highest peak in the QRS complex of the ECG wave and RR is the interval between successive Rs.
 ///     - contactStatus true if the sensor has contact (with a measurable surface e.g. skin)
 ///     - contactStatusSupported true if the sensor supports contact status
 ///     - rrAvailable true if RR data is available.
-public typealias PolarHrData = [(hr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)]
+public typealias PolarHrData = [(hr: UInt8, ppgQuality: UInt8, correctedHr: UInt8, rrsMs: [Int], rrAvailable: Bool, contactStatus: Bool, contactStatusSupported: Bool)]
 
 /// Polar Ecg data
 ///
-///     - Deprecated: Timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
 ///     - samples: Acceleration samples
 ///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
 ///         - voltage value in µVolts
-public typealias PolarEcgData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, voltage: Int32)])
+public typealias PolarEcgData = ([(timeStamp: UInt64, voltage: Int32)])
 
 /// Polar acc data
 ///
-///     - Deprecated: Timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
 ///     - samples: Acceleration samples
 ///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
 ///         - x axis value in millig (including gravity)
 ///         - y axis value in millig (including gravity)
 ///         - z axis value in millig (including gravity)
-public typealias PolarAccData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, x: Int32, y: Int32, z: Int32)])
+public typealias PolarAccData = ([(timeStamp: UInt64, x: Int32, y: Int32, z: Int32)])
 
 /// Polar gyro data
 ///
-///     - Deprecated: Timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
 ///     - samples: Gyroscope samples
 ///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
 ///         - x axis value in deg/sec
 ///         - y axis value in deg/sec
 ///         - z axis value in deg/sec
-public typealias PolarGyroData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, x: Float, y: Float, z: Float)])
+public typealias PolarGyroData = ([(timeStamp: UInt64, x: Float, y: Float, z: Float)])
 
 /// Polar magnetometer data
 ///
-///     - Deprecated: Timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
 ///     - samples: Magnetometer samples
 ///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
 ///         - x axis value in Gauss
 ///         - y axis value in Gauss
 ///         - z axis value in Gauss
-public typealias PolarMagnetometerData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, x: Float, y: Float, z: Float)])
+public typealias PolarMagnetometerData = ([(timeStamp: UInt64, x: Float, y: Float, z: Float)])
 
-/// OHR data source enum
-@available(*, deprecated, renamed: "PpgDataType")
-public enum OhrDataType: Int, CaseIterable {
-    /// 3 ppg + 1 ambient
-    case ppg3_ambient1 = 4
-    case unknown = 18
-}
-
-/// Polar Ohr data
+/// Polar Temperature data
 ///
-///     - Deprecated: Timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
-///     - type: type of data, which varies based on what is type of optical sensor used in the device
-///     - samples: Photoplethysmography samples
+///     - timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
+///     - samples: Temperature samples
 ///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
-///         - channelSamples is the PPG (Photoplethysmography) raw value received from the optical sensor. Based on [OhrDataType] the amount of channels varies. Typically ppg(n) channel + n ambient(s).
+///         - temperature value in celsius
+public typealias PolarTemperatureData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, temperature: Float)])
+
+/// Polar Pressure data
 ///
-@available(*, deprecated, renamed: "PolarPpgData")
-public typealias PolarOhrData = (timeStamp: UInt64, type: OhrDataType, samples: [(timeStamp:UInt64, channelSamples: [Int32])])
+///     - timestamp: Last sample timestamp in nanoseconds. The epoch of timestamp is 1.1.2000
+///     - samples: Pressure samples
+///         - timeStamp: moment sample is taken in nanoseconds. The epoch of timestamp is 1.1.2000
+///         - pressure value in bar
+public typealias PolarPressureData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, pressure: Float)])
 
 
 /// PPG data source enum
 public enum PpgDataType: Int, CaseIterable {
+    // 1 ppg, sport id (frame type 6)
+    case ppg1 = 1
     /// 3 ppg + 1 ambient
     case ppg3_ambient1 = 4
+    /// 2 ppg  + status channel
+    case ppg2 = 3
+    /// 3 ppg (NUMINT_TSx, TIA_GAIN_CH1_TSx, TIA_GAIN_CH2_TSx)
+    case ppg3 = 7
+    /// 16 ppg + 1 status
+    case ppg17 = 5
+    ///  8 green + 6 red + 6 ir channels + 1 status channel
+    case ppg21 = 6
     case unknown = 18
 }
 
@@ -153,7 +181,7 @@ public typealias PolarPpgData = (type: PpgDataType, samples: [(timeStamp:UInt64,
 ///         - blockerBit = 1 if PP measurement was invalid due to acceleration or other reason
 ///         - skinContactStatus = 0 if the device detects poor or no contact with the skin
 ///         - skinContactSupported = 1 if the Sensor Contact feature is supported.
-public typealias PolarPpiData = (timeStamp: UInt64, samples: [(hr: Int, ppInMs: UInt16, ppErrorEstimate: UInt16, blockerBit: Int, skinContactStatus: Int, skinContactSupported: Int)])
+public typealias PolarPpiData = (timeStamp: UInt64, samples: [(timeStamp: UInt64, hr: Int, ppInMs: UInt16, ppErrorEstimate: UInt16, blockerBit: Int, skinContactStatus: Int, skinContactSupported: Int)])
 
 /// Polar exercise entry
 ///
@@ -173,7 +201,7 @@ public typealias PolarExerciseData = (interval: UInt32, samples: [UInt32])
 public typealias PolarRecordingStatus = (ongoing: Bool, entryId: String)
 
 /// API.
-public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, PolarH10OfflineExerciseApi, PolarSdkModeApi {
+public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, PolarH10OfflineExerciseApi, PolarSdkModeApi, PolarFirmwareUpdateApi, PolarActivityApi, PolarSleepApi, PolarTrainingSessionApi {
     
     /// remove all known devices, which are not in use
     func cleanup()
@@ -281,6 +309,141 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     ///   - onError: see `PolarErrors` for possible errors invoked
     func doFactoryReset(_ identifier: String, preservePairingInformation: Bool) -> Completable
     
+    /// Perform restart to given device.
+    ///
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    ///   - preservePairingInformation: preserve pairing information during restart
+    /// - Returns: Completable stream
+    ///   - success: when restart notification sent to device
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func doRestart(_ identifier: String, preservePairingInformation: Bool) -> Completable
+    
+    /// Get SD log configuration from a device (SDLOGS.BPB)
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    /// - Returns: Single stream
+    ///   - success: A motley crew of boolean values describing the SD log configuration
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func getSDLogConfiguration(_ identifier: String) -> Single<SDLogConfig>
+    
+    /// Set SD log configuration to a device (SDLOGS.BPB)
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    ///   - logConfiguration: A motley crew of boolean values describing the SD log configuration
+    /// - Returns: Completable stream
+    ///   - success: When SD log configuration has been written to the device
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func setSDLogConfiguration(_ identifier: String, logConfiguration: SDLogConfig) -> Completable
+
+    ///Set [FtuConfig] for device
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    ///   - ftuConfig: Configuration data for the first-time use, encapsulated in [PolarFirstTimeUseConfig].
+    /// - Returns: Completable stream
+    ///   - success: when enable or disable sent to device
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    ///- [PolarFirstTimeUseConfig] class enforces specific ranges and valid values for each parameter:
+    ///   - Gender: "Male" or "Female"
+    ///   - Height: 90 to 240 cm
+    ///   - Weight: 15 to 300 kg
+    ///   - Max heart rate: 100 to 240 bpm
+    ///   - Resting heart rate: 20 to 120 bpm
+    ///   - VO2 max: 10 to 95
+    ///   - Training background: One of the predefined levels (10, 20, 30, 40, 50, 60)
+    ///   - Typical day: One of [TypicalDay] values
+    ///   - Sleep goal: Minutes, valid range [300-660]
+    func doFirstTimeUse(_ identifier: String, ftuConfig: PolarFirstTimeUseConfig) -> Completable
+    
+    /// Check if the First Time Use has been done for the given Polar device.
+    /// - Parameters:
+    ///   - identifier: Polar device id or UUID
+    /// - Returns: Boolean
+    ///   - success: true when FTU has been done, false otherwise
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func isFtuDone(_ identifier: String) -> Single<Bool>
+
+    /// Set the device to warehouse sleep state. Factory reset will be performed in order to enable the setting.
+    ///
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    /// - Returns: Completable stream
+    ///   - success: when warehouse sleep has been set together with  factory reset
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func setWarehouseSleep(_ identifier: String) -> Completable
+    
+    /// Turn of device by setting the device to sleep state.
+    ///
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    /// - Returns: Completable stream
+    ///   - success: when device has successfully set to sleep
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func turnDeviceOff(_ identifier: String) -> Completable
+    
+    /// Get Device User Settings to a device from proto in device (UDEVSET.BPB)
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    /// - Returns: Single stream
+    ///   - success: Collection of user device settings, like device location on user.
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func getPolarUserDeviceSettings(identifier: String) -> Single<PolarUserDeviceSettings.PolarUserDeviceSettingsResult>
+    
+    /// Set Device User Settings to a device (UDEVSET.BPB)
+    /// - Parameters:
+    ///   - identifier: Polar device id or UUID
+    ///   - polarUserDeviceSettings: Collection of user device settings, like device location on user.
+    /// - Returns: Completable stream
+    ///   - success: When Device User Settings configuration has been written to the device
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func setPolarUserDeviceSettings(_ identifier: String, polarUserDeviceSettings: PolarUserDeviceSettings) -> Completable
+
+
+
+    /// Delete data [PolarStoredDataType] from a device.
+    ///
+    /// @param identifier, Polar device ID or BT address
+    /// @param dataType, [PolarStoredDataType] A specific data type that shall be deleted
+    /// @param until, Data will be deleted from device from history until this date.
+    /// @return [Completable] emitting success or error
+    func deleteStoredDeviceData(_ identifier: String, dataType: PolarStoredDataType.StoredDataType, until: Date?) -> Completable
+    
+    /// Delete device date folders from a device.
+    /// - Parameters:
+    ///   - identifier: Polar device id or UUID
+    ///   - fromDate: The starting date to delete date folders from
+    ///   - toDate: The ending date of last date to delete folders from
+    /// - Returns: Completable stream
+    ///   - success: when date folders successfully deleted
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func deleteDeviceDateFolders(_ identifier: String, fromDate: Date?, toDate: Date?) -> Completable
+
+    /// Waits for the device to establish a connection.
+    /// - Parameters:
+    ///  - identifier: Polar device ID or Bluetooth UUID
+    /// - Returns: Completable stream
+    ///   - success: When connection is established
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func waitForConnection(_ identifier: String) -> Completable
+    
+    /// Set user device location on a device.
+     /// - Parameters:
+     ///   - identifier: Polar device id or UUID
+     ///   - location: Device location as an integer value (see `PolarUserDeviceSettings.DeviceLocation`)
+     /// - Returns: Completable stream
+     ///   - success: when location is set successfully
+     ///   - onError: see `PolarErrors` for possible errors invoked
+     func setUserDeviceLocation(_ identifier: String, location: Int) -> Completable
+
+     /// Set USB connection mode on a device.
+     /// - Parameters:
+     ///   - identifier: Polar device id or UUID
+     ///   - enabled: Boolean flag to enable or disable USB connection mode
+     /// - Returns: Completable stream
+     ///   - success: when USB mode is set successfully
+     ///   - onError: see `PolarErrors` for possible errors invoked
+     func setUsbConnectionMode(_ identifier: String, enabled: Bool) -> Completable
+
     /// Common GAP (Generic access profile) observer
     var observer: PolarBleApiObserver? { get set }
     
@@ -296,10 +459,7 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     
     /// Device features ready observer
     var deviceFeaturesObserver: PolarBleApiDeviceFeaturesObserver? { get set }
-    
-    /// SDK mode feature available in the device and ready observer
-    @available(*, deprecated, message: "The functionality has changed. Please use the bleSdkFeatureReady to know if sdkModeFeature is available")
-    var sdkModeFeatureObserver: PolarBleApiSdkModeFeatureObserver? { get set }
+
     
     /// Helper to check if Ble is currently powered
     /// - Returns: current power state
@@ -308,6 +468,9 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// optional logger set to get traces from sdk
     var logger: PolarBleApiLogger? { get set }
     
-    /// optional disable or enable automatic reconnection, by default it is enabled
+    /// optional disable or enable automatic reconnection, by default it is enabled.
+    ///
+    /// Note that firmware update (FWU) turns on automatic reconnection automatically, and restores the setting
+    /// automatically when operation completes. One should not change this setting during FWU.
     var automaticReconnection: Bool { get set }
 }
