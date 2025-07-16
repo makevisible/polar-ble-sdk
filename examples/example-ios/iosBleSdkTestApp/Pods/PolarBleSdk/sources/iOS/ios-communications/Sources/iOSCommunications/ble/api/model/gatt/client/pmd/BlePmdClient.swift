@@ -77,6 +77,11 @@ public struct Pmd {
 /// client declaration
 public class BlePmdClient: BleGattClientBase {
     
+    struct PmdTimestampData: Hashable {
+        let measurementType: PmdMeasurementType
+        let frameType: PmdDataFrameType
+    }
+
     public static let PMD_SERVICE = CBUUID(string: "FB005C80-02E7-F387-1CAD-8ACD2D8DF0C8")
     public static let PMD_CP = CBUUID(string: "FB005C81-02E7-F387-1CAD-8ACD2D8DF0C8")
     public static let PMD_DATA = CBUUID(string: "FB005C82-02E7-F387-1CAD-8ACD2D8DF0C8")
@@ -90,9 +95,12 @@ public class BlePmdClient: BleGattClientBase {
     private var observersEcg = AtomicList<RxObserver<EcgData>>()
     private var observersPpg = AtomicList<RxObserver<PpgData>>()
     private var observersPpi = AtomicList<RxObserver<PpiData>>()
+    private var observersTemperature = AtomicList<RxObserver<TemperatureData>>()
+    private var observersSkinTemperature = AtomicList<RxObserver<SkinTemperatureData>>()
+    private var observersPressure = AtomicList<RxObserver<PressureData>>()
     private var observersFeature = AtomicList<RxObserverSingle<Set<PmdMeasurementType>>>()
     private var storedSettings  = AtomicType<[PmdMeasurementType : PmdSetting]>(initialValue: [PmdMeasurementType : PmdSetting]())
-    private var previousTimeStamp = AtomicType<[PmdMeasurementType : UInt64]>(initialValue: [PmdMeasurementType : UInt64]())
+    private var previousTimeStamp = AtomicType<[PmdTimestampData : UInt64]>(initialValue: [PmdTimestampData : UInt64]())
     
     public init(gattServiceTransmitter: BleAttributeTransportProtocol){
         super.init(serviceUuid: BlePmdClient.PMD_SERVICE, gattServiceTransmitter: gattServiceTransmitter)
@@ -127,7 +135,7 @@ public class BlePmdClient: BleGattClientBase {
         if let value = factor {
             return Float(bitPattern: value)
         }
-        BleLogger.error("factor not stored to settings")
+        BleLogger.error("Factor not stored to settings. Using 1.0f as default.")
         return 1.0
     }
     
@@ -135,17 +143,20 @@ public class BlePmdClient: BleGattClientBase {
         return UInt(fetchSetting(type, setting: PmdSetting.PmdSettingType.sampleRate) ?? 0)
     }
     
-    private func getPreviousFrameTimeStamp(_ type: PmdMeasurementType) -> UInt64 {
+    private func getPreviousFrameTimeStamp(_ type: PmdMeasurementType, _ frameType: PmdDataFrameType) -> UInt64 {
         var timeStamp: UInt64?
         previousTimeStamp.accessItem({ (timeStamps) in
-            timeStamp = timeStamps[type]
+            
+            let dataTypes = PmdTimestampData.init(measurementType: type, frameType: frameType)
+            timeStamp = timeStamps[dataTypes]
         })
         return timeStamp ?? 0
     }
-    
-    private func setPreviousFrameTimeStamp(_ type: PmdMeasurementType, _ timeStamp: UInt64 ) {
+
+    private func setPreviousFrameTimeStamp(_ type: PmdMeasurementType, _ frameType: PmdDataFrameType, _ timeStamp: UInt64 ) {
         previousTimeStamp.accessItem { (timeStamps) in
-            timeStamps[type] = timeStamp
+            let dataTypes = PmdTimestampData.init(measurementType: type, frameType: frameType)
+            timeStamps[dataTypes] = timeStamp
         }
     }
     
@@ -197,6 +208,12 @@ public class BlePmdClient: BleGattClientBase {
                         RxUtils.postErrorAndClearList(observersGyro, error: BlePmdError.bleOnlineStreamClosed(description: errorDescription))
                     case .mgn:
                         RxUtils.postErrorAndClearList(observersMagnetometer, error: BlePmdError.bleOnlineStreamClosed(description: errorDescription))
+                    case .temperature:
+                        RxUtils.postErrorAndClearList(observersTemperature, error: BlePmdError.bleOnlineStreamClosed(description: errorDescription))
+                    case .skinTemperature:
+                        RxUtils.postErrorAndClearList(observersSkinTemperature, error: BlePmdError.bleOnlineStreamClosed(description: errorDescription))
+                    case .pressure:
+                        RxUtils.postErrorAndClearList(observersPressure, error: BlePmdError.bleOnlineStreamClosed(description: errorDescription))
                     default:
                         BleLogger.error("PMD CP, not supported PmdMeasurementType for Measurement stop. Measurement type value \(dataType) ")
                     }
@@ -222,7 +239,7 @@ public class BlePmdClient: BleGattClientBase {
             print("Couldn't parse the data frame. Reason: \(error)")
             return
         }
-        setPreviousFrameTimeStamp(frame.measurementType, frame.timeStamp)
+        setPreviousFrameTimeStamp(frame.measurementType, frame.frameType, frame.timeStamp)
         
         switch (frame.measurementType ) {
         case PmdMeasurementType.ecg:
@@ -280,6 +297,33 @@ public class BlePmdClient: BleGattClientBase {
                     emitter.obs.onError(error)
                 }
             }
+        case PmdMeasurementType.temperature:
+            RxUtils.emitNext(observersTemperature) { (emitter) in
+                do {
+                    let parsedData = try TemperatureData.parseDataFromDataFrame(frame: frame)
+                    emitter.obs.onNext(parsedData)
+                } catch let error {
+                    emitter.obs.onError(error)
+                }
+            }
+        case PmdMeasurementType.skinTemperature:
+            RxUtils.emitNext(observersSkinTemperature) { (emitter) in
+                do {
+                    let parsedData = try SkinTemperatureData.parseDataFromDataFrame(frame: frame)
+                    emitter.obs.onNext(parsedData)
+                } catch let error {
+                    emitter.obs.onError(error)
+                }
+            }
+        case PmdMeasurementType.pressure:
+            RxUtils.emitNext(observersPressure) { (emitter) in
+                do {
+                    let parsedData = try PressureData.parseDataFromDataFrame(frame: frame)
+                    emitter.obs.onNext(parsedData)
+                } catch let error {
+                    emitter.obs.onError(error)
+                }
+            }
         default:
             BleLogger.trace("Non handled stream type received")
         }
@@ -328,7 +372,19 @@ public class BlePmdClient: BleGattClientBase {
     public func observePpi() -> Observable<PpiData> {
         return RxUtils.monitor(observersPpi, transport: gattServiceTransmitter, checkConnection: true)
     }
+
+    public func observeTemperature() -> Observable<TemperatureData> {
+        return RxUtils.monitor(observersTemperature, transport: gattServiceTransmitter, checkConnection: true)
+    }
     
+    public func observePressure() -> Observable<PressureData> {
+        return RxUtils.monitor(observersPressure, transport: gattServiceTransmitter, checkConnection: true)
+    }
+    
+    public func observeSkinTemperature() -> Observable<SkinTemperatureData> {
+        return RxUtils.monitor(observersSkinTemperature, transport: gattServiceTransmitter, checkConnection: true)
+    }
+
     public func startMeasurement(_ type: PmdMeasurementType, settings: PmdSetting, _ recordingType: PmdRecordingType = PmdRecordingType.online, _ secret: PmdSecret? = nil) -> Completable {
         storedSettings.accessItem { (settingsStored) in
             settingsStored[type] = settings
@@ -371,7 +427,7 @@ public class BlePmdClient: BleGattClientBase {
                 } else {
                     observer(.error(BlePmdError.controlPointRequestFailed(errorCode: cpResponse.errorCode.rawValue, description: cpResponse.errorCode.description)))
                 }
-                self.setPreviousFrameTimeStamp(type, 0)
+                self.setPreviousFrameTimeStamp(type, PmdDataFrameType.type_0, 0)
             } catch let err {
                 observer(.error(err))
             }
@@ -437,6 +493,9 @@ public class BlePmdClient: BleGattClientBase {
                             break
                         case .temperature:
                             measurementStatus.append((PmdMeasurementType.temperature, PmdActiveMeasurement.fromStatusResponse(responseByte: parameter)))
+                            break
+                        case .skinTemperature:
+                            measurementStatus.append((PmdMeasurementType.skinTemperature, PmdActiveMeasurement.fromStatusResponse(responseByte: parameter)))
                             break
                         case .offline_hr:
                             measurementStatus.append((PmdMeasurementType.offline_hr, PmdActiveMeasurement.fromStatusResponse(responseByte: parameter)))
@@ -701,6 +760,10 @@ public class BlePmdClient: BleGattClientBase {
         try transport.transmitMessage(self, serviceUuid: BlePmdClient.PMD_SERVICE, characteristicUuid: BlePmdClient.PMD_CP, packet: data, withResponse: true)
         let response = try self.pmdCpResponseQueue.poll(60)
         let resp = PmdControlPointResponse(response)
+
+        if resp.errorCode != .success {
+            throw BleGattException.gattAttributeError(errorCode: resp.errorCode.rawValue, errorDescription: resp.errorCode.description)
+        }
         var more = resp.more
         while (more) {
             let parameters = try self.pmdCpResponseQueue.poll(60)
@@ -718,5 +781,6 @@ public class BlePmdClient: BleGattClientBase {
         RxUtils.postErrorAndClearList(observersEcg, error: error)
         RxUtils.postErrorAndClearList(observersPpg, error: error)
         RxUtils.postErrorAndClearList(observersPpi, error: error)
+        RxUtils.postErrorAndClearList(observersTemperature, error: error)
     }
 }

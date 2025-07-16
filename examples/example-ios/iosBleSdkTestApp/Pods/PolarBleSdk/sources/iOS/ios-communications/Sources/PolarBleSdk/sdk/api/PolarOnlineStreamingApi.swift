@@ -9,17 +9,25 @@ import RxSwift
 ///
 /// Requires features `PolarBleSdkFeature.feature_polar_online_streaming`
 ///
-/// Note, online streaming is supported by VeritySense, H10 and OH1 devices
-///
 public protocol PolarOnlineStreamingApi {
+    
     ///  Get the data types available in this device for online streaming
-    ///
     /// - Parameters:
     ///   - identifier: polar device id
     /// - Returns: Single stream
     ///   - success: set of available online streaming data types in this device
     ///   - onError: see `PolarErrors` for possible errors invoked
     func getAvailableOnlineStreamDataTypes(_ identifier: String) -> Single<Set<PolarDeviceDataType>>
+
+    ///  Find out if the HR service is available in the device. Use this API method in a case where the device does not support Polar Measurement Data service.
+    ///  In such a case using 'getAvailableOnlineStreamDataTypes' will return error; use this method instead.
+    ///
+    /// - Parameters:
+    ///   - identifier: polar device id
+    /// - Returns: Single stream
+    ///   - success: onSuccess the set with HR service, if available
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func getAvailableHRServiceDataTypes(identifier: String) -> Single<Set<PolarDeviceDataType>>
     
     ///  Request the stream settings available in current operation mode. This request shall be used before the stream is started
     ///  to decide currently available settings. The available settings depend on the state of the device. For example, if any stream(s)
@@ -88,17 +96,6 @@ public protocol PolarOnlineStreamingApi {
     ///   - settings: selected settings to start the stream
     func startMagnetometerStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarMagnetometerData>
     
-    /// Start OHR (Optical heart rate) PPG (Photoplethysmography) stream. PPG stream is stopped if the connection is closed, error occurs or stream is disposed.
-    ///
-    /// - Parameters:
-    ///   - identifier: Polar device id or device address
-    ///   - settings: selected settings to start the stream
-    /// - Returns: Observable stream
-    ///   - onNext: for every air packet received. see `PolarOhrData`
-    ///   - onError: see `PolarErrors` for possible errors invoked
-    @available(*, deprecated, renamed: "startPpgStreaming")
-    func startOhrStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarOhrData>
-    
     /// Start optical sensor PPG (Photoplethysmography) stream. PPG stream is stopped if the connection is closed, error occurs or stream is disposed.
     ///
     /// - Parameters:
@@ -120,6 +117,36 @@ public protocol PolarOnlineStreamingApi {
     ///   - onError: see `PolarErrors` for possible errors invoked
     func startPpiStreaming(_ identifier: String) -> Observable<PolarPpiData>
     
-    @available(*, deprecated, renamed: "startPpiStreaming")
-    func startOhrPPIStreaming(_ identifier: String) -> Observable<PolarPpiData>
+    /// Start temperature stream. Temperature stream is stopped if the connection is closed,
+    /// error occurs or stream is disposed.
+    ///
+    /// - Parameters:
+    ///   - identifier: Polar device id or device address
+    ///   - settings: selected settings to start the stream
+    /// - Returns: Observable stream
+    ///   - onNext: for every air packet received. see `PolarTemperatureData`
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func startTemperatureStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarTemperatureData>
+    
+    /// Start pressure stream. Pressure stream is stopped if the connection is closed,
+    /// error occurs or stream is disposed.
+    ///
+    /// - Parameters:
+    ///   - identifier: Polar device id or device address
+    ///   - settings: selected settings to start the stream
+    /// - Returns: Observable stream
+    ///   - onNext: for every air packet received. see `PolarPressureData`
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func startPressureStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarPressureData>
+    
+    /// Start skin temperature stream. Skin temperature stream is stopped if the connection is closed,
+    /// error occurs or stream is disposed.
+    ///
+    /// - Parameters:
+    ///   - identifier: Polar device id or device address
+    ///   - settings: selected settings to start the stream
+    /// - Returns: Observable stream
+    ///   - onNext: for every air packet received. see `PolarTemperatureData`
+    ///   - onError: see `PolarErrors` for possible errors invoked
+    func startSkinTemperatureStreaming(_ identifier: String, settings: PolarSensorSetting) -> Observable<PolarTemperatureData>
 }
