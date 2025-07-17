@@ -489,6 +489,6 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// automatically when operation completes. One should not change this setting during FWU.
     var automaticReconnection: Bool { get set }
 
-    func startFastBle(identifier: String) -> Completable
-    func stopFastBle(identifier: String) -> Completable
+    func startFastBle(identifier: String, withSync: Bool) -> Completable
+    func stopFastBle(identifier: String, withSync: Bool) -> Completable
 }

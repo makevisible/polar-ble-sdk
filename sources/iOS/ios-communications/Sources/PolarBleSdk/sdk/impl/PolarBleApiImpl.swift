@@ -741,8 +741,8 @@ import UIKit
             }
     }
 
-    func startFastBle(identifier: String) -> Completable {
-        BleLogger.trace("startFastBle: sending initialization notification")
+    func startFastBle(identifier: String, withSync: Bool) -> Completable {
+        BleLogger.trace("startFastBle: sending initialization notification, withSync: \(withSync)")
         guard let session = try? self.sessionFtpClientReady(identifier) else {
             BleLogger.error("startFastBle: failed to get session")
             return Completable.error(PolarErrors.deviceNotConnected)
@@ -752,25 +752,37 @@ import UIKit
             return Completable.error(PolarErrors.serviceNotFound)
         }
         return Completable.deferred {
-            do {
-                BleLogger.trace("startFastBle: sending initialize session notification")
-                return client.sendNotification(
-                    Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue,
-                    parameters: nil
-                ).do(onError: { error in
-                    BleLogger.error("startFastBle: failed to send initialize session notification: \(error)")
-                }, onCompleted: {
-                    BleLogger.trace("startFastBle: initializeSession onCompleted")
-                })
-            } catch {
-                BleLogger.error("startFastBle: failed to send initialize session notification: \(error)")
-                return Completable.empty()
-            }
+            BleLogger.trace("startFastBle: about to send initializeSession notification")
+            return client.sendNotification(
+                Protocol_PbPFtpHostToDevNotification.initializeSession.rawValue,
+                parameters: nil
+            )
+            .do(onError: { error in
+                BleLogger.error("startFastBle: initializeSession notification error: \(error)")
+            }, onCompleted: {
+                BleLogger.trace("startFastBle: initializeSession notification completed")
+            })
+            .andThen(Completable.deferred {
+                if withSync {
+                    BleLogger.trace("startFastBle: about to send startSync notification")
+                    return client.sendNotification(
+                        Protocol_PbPFtpHostToDevNotification.startSync.rawValue,
+                        parameters: nil
+                    )
+                    .do(onError: { error in
+                        BleLogger.error("startFastBle: startSync notification error: \(error)")
+                    }, onCompleted: {
+                        BleLogger.trace("startFastBle: startSync notification completed")
+                    })
+                } else {
+                    return Completable.empty()
+                }
+            })
         }
     }
 
-    func stopFastBle(identifier: String) -> Completable {
-        BleLogger.trace("stopFastBle: sending terminate session notification")
+    func stopFastBle(identifier: String, withSync: Bool) -> Completable {
+        BleLogger.trace("stopFastBle: sending terminate session notification, withSync: \(withSync)")
         guard let session = try? self.sessionFtpClientReady(identifier) else {
             BleLogger.error("stopFastBle: failed to get session")
             return Completable.error(PolarErrors.deviceNotConnected)
@@ -780,20 +792,36 @@ import UIKit
             return Completable.error(PolarErrors.serviceNotFound)
         }
         return Completable.deferred {
-            do {
-                BleLogger.trace("stopFastBle: sending terminate session notification")
-                return client.sendNotification(
-                    Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
-                    parameters: nil
-                ).do(onError: { error in
-                    BleLogger.error("stopFastBle: failed to send terminate session notification: \(error)")
-                }, onCompleted: {
-                    BleLogger.trace("stopFastBle: terminateSession onCompleted")
-                })
-            } catch {
-                BleLogger.error("stopFastBle: failed to send terminate session notification (try-catch): \(error)")
-                return Completable.empty()
-            }
+            BleLogger.trace("stopFastBle: about to send terminateSession notification")
+            return client.sendNotification(
+                Protocol_PbPFtpHostToDevNotification.terminateSession.rawValue,
+                parameters: nil
+            )
+            .do(onError: { error in
+                BleLogger.error("stopFastBle: terminateSession notification error: \(error)")
+            }, onCompleted: {
+                BleLogger.trace("stopFastBle: terminateSession notification completed")
+            })
+            .andThen(Completable.deferred {
+                if withSync {
+                    BleLogger.trace("stopFastBle: about to send stopSync notification")
+
+                    var params = Protocol_PbPFtpStopSyncParams()
+                    params.completed = true
+
+                    return client.sendNotification(
+                        Protocol_PbPFtpHostToDevNotification.stopSync.rawValue,
+                        parameters: try params.serializedData() as NSData
+                    )
+                    .do(onError: { error in
+                        BleLogger.error("stopFastBle: stopSync notification error: \(error)")
+                    }, onCompleted: {
+                        BleLogger.trace("stopFastBle: stopSync notification completed")
+                    })
+                } else {
+                    return Completable.empty()
+                }
+            })
         }
     }
 }

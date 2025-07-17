@@ -4591,7 +4591,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
-    override fun startFastBle(identifier: String, scheduler: Scheduler): Completable {
+    override fun startFastBle(identifier: String, scheduler: Scheduler, withSync: Boolean): Completable {
         BleLogger.d(TAG, "startFastBle: sending initialization notification")
         val session = try {
             sessionPsFtpClientReady(identifier)
@@ -4603,15 +4603,38 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             ?: return Completable.error(PolarServiceNotAvailable())
 
         return Completable.defer {
+            BleLogger.d(TAG, "startFastBle: about to send INITIALIZE_SESSION notification")
             client.sendNotification(
                 PftpNotification.PbPFtpHostToDevNotification.INITIALIZE_SESSION_VALUE, null, scheduler
-            ).doOnError { error ->
-                BleLogger.e(TAG, "startFastBle: failed to send initialize session notification: $error")
+            )
+            .doOnComplete {
+                BleLogger.d(TAG, "startFastBle: INITIALIZE_SESSION notification completed")
             }
+            .doOnError { error ->
+                BleLogger.e(TAG, "startFastBle: INITIALIZE_SESSION notification error: $error")
+            }
+            .andThen(
+                Completable.defer {
+                    if (withSync) {
+                        BleLogger.d(TAG, "startFastBle: about to send START_SYNC notification")
+                        client.sendNotification(
+                            PftpNotification.PbPFtpHostToDevNotification.START_SYNC_VALUE, null, scheduler
+                        )
+                        .doOnComplete {
+                            BleLogger.d(TAG, "startFastBle: START_SYNC notification completed")
+                        }
+                        .doOnError { error ->
+                            BleLogger.e(TAG, "startFastBle: START_SYNC notification error: $error")
+                        }
+                    } else {
+                        Completable.complete()
+                    }
+                }
+            )
         }
     }
 
-    override fun stopFastBle(identifier: String, scheduler: Scheduler): Completable {
+    override fun stopFastBle(identifier: String, scheduler: Scheduler, withSync: Boolean): Completable {
         BleLogger.d(TAG, "stopFastBle: sending terminate session notification")
         val session = try {
             sessionPsFtpClientReady(identifier)
@@ -4623,11 +4646,35 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             ?: return Completable.error(PolarServiceNotAvailable())
 
         return Completable.defer {
+            BleLogger.d(TAG, "stopFastBle: about to send TERMINATE_SESSION notification")
             client.sendNotification(
                 PftpNotification.PbPFtpHostToDevNotification.TERMINATE_SESSION_VALUE, null, scheduler
-            ).doOnError { error ->
-                BleLogger.e(TAG, "stopFastBle: failed to send terminate session notification: $error")
+            )
+            .doOnComplete {
+                BleLogger.d(TAG, "stopFastBle: TERMINATE_SESSION notification completed")
             }
+            .doOnError { error ->
+                BleLogger.e(TAG, "stopFastBle: TERMINATE_SESSION notification error: $error")
+            }
+            .andThen(
+                Completable.defer {
+                    if (withSync) {
+                        BleLogger.d(TAG, "stopFastBle: about to send STOP_SYNC notification")
+                        val params = PbPFtpStopSyncParams.newBuilder().setCompleted(true).build().toByteArray()
+                        client.sendNotification(
+                            PftpNotification.PbPFtpHostToDevNotification.STOP_SYNC_VALUE, params, scheduler
+                        )
+                        .doOnComplete {
+                            BleLogger.d(TAG, "stopFastBle: STOP_SYNC notification completed")
+                        }
+                        .doOnError { error ->
+                            BleLogger.e(TAG, "stopFastBle: STOP_SYNC notification error: $error")
+                        }
+                    } else {
+                        Completable.complete()
+                    }
+                }
+            )
         }
     }
 }
