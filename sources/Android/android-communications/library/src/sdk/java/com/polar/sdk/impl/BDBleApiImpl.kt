@@ -3143,24 +3143,20 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val datesList = getDatesBetween(fromDate, toDate)
 
-        return sendInitializationAndStartSyncNotifications(client)
-            .flatMap {
-                Observable.fromIterable(datesList)
-                    .flatMapSingle { date ->
-                        PolarSleepUtils.readSleepDataFromDayDirectory(client, date)
-                            .map { data: PolarSleepAnalysisResult ->
-                                Pair(date, data)
-                            }
+        return Observable.fromIterable(datesList)
+            .flatMapSingle { date ->
+                PolarSleepUtils.readSleepDataFromDayDirectory(client, date)
+                    .map { data: PolarSleepAnalysisResult ->
+                        Pair(date, data)
                     }
-                    .toList()
-                    .map { pairs ->
-                        pairs.forEach { pair ->
-                            sleepDataList.add(Pair(pair.first, pair.second))
-                        }
-                        sleepDataList.map { PolarSleepData(it.first, it.second) }
-
-                    }
-            }.doFinally { sendTerminateAndStopSyncNotifications(client) }
+            }
+            .toList()
+            .map { pairs ->
+                pairs.forEach { pair ->
+                    sleepDataList.add(Pair(pair.first, pair.second))
+                }
+                sleepDataList.map { PolarSleepData(it.first, it.second) }
+            }
     }
 
     override fun getCalories(identifier: String, fromDate: LocalDate, toDate: LocalDate, caloriesType: CaloriesType): Single<List<PolarCaloriesData>> {
