@@ -3145,25 +3145,46 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
     }
 
     override fun getSleepRecordingState(identifier: String): Single<Boolean> {
+        BleLogger.d(TAG, "getSleepRecordingState: called for identifier: $identifier")
         return observeSleepRecordingState(identifier = identifier)
-            .filter {
-                it.isEmpty() == false
+            .doOnSubscribe { BleLogger.d(TAG, "getSleepRecordingState: Subscribed to observeSleepRecordingState for $identifier") }
+            .doOnNext { arr -> BleLogger.d(TAG, "getSleepRecordingState: Received array: ${arr.contentToString()}") }
+            .filter { arr ->
+                val notEmpty = arr.isNotEmpty()
+                BleLogger.d(TAG, "getSleepRecordingState: Filter notEmpty=$notEmpty for array: ${arr.contentToString()}")
+                notEmpty
             }
             .take(1)
-            .map { array -> array.last() }
+            .map { array ->
+                BleLogger.d(TAG, "getSleepRecordingState: Taking last value: ${array.last()} from array: ${array.contentToString()}")
+                array.last()
+            }
+            .doOnNext { value -> BleLogger.d(TAG, "getSleepRecordingState: Result: $value") }
+            .doOnError { BleLogger.e(TAG, "getSleepRecordingState: error $it") }
+            .doFinally { BleLogger.d(TAG, "getSleepRecordingState: finally") }
             .singleOrError()
     }
 
     override fun observeSleepRecordingState(identifier: String):  Flowable<Array<Boolean>> {
+        BleLogger.d(TAG, "observeSleepRecordingState: called for identifier: $identifier")
         val receive: Flowable<Array<Boolean>> =
             receiveRestApiEvents<PolarSleepApiServiceEventPayload>(identifier, mapper = { it.toObject() })
+                .doOnSubscribe { BleLogger.d(TAG, "observeSleepRecordingState: Subscribed to receiveRestApiEvents for $identifier") }
+                .doOnNext { BleLogger.d(TAG, "observeSleepRecordingState: Received event payloads: $it") }
                 .map { array ->
-                    array.map { it.sleep_recording_state.enabled == 1 }
-                    .toTypedArray()
+                    val boolArray = array.map { it.sleep_recording_state.enabled == 1 }.toTypedArray()
+                    BleLogger.d(TAG, "observeSleepRecordingState: Mapped to Boolean array: ${boolArray.contentToString()}")
+                    boolArray
                 }
+                .doOnError { BleLogger.e(TAG, "observeSleepRecordingState: Error: $it for identifier: $identifier") }
         val subscribe = putNotification(identifier = identifier, notification = "{}",
             path = "/REST/SLEEP.API?cmd=subscribe&event=sleep_recording_state&details=[enabled]")
-        return subscribe.andThen(receive)
+        return subscribe
+            .doOnComplete { BleLogger.d(TAG, "observeSleepRecordingState: Subscription notification sent for $identifier") }
+            .andThen(receive)
+            .doOnComplete { BleLogger.d(TAG, "observeSleepRecordingState: completed") }
+            .doOnError { BleLogger.e(TAG, "observeSleepRecordingState: error $it") }
+            .doFinally { BleLogger.d(TAG, "observeSleepRecordingState: finally") }
     }
 
     override fun stopSleepRecording(identifier: String): Completable {
