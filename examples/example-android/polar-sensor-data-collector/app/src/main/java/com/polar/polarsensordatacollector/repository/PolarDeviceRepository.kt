@@ -930,7 +930,7 @@ class PolarDeviceRepository @Inject constructor(
         until: LocalDate
     ): ResultOfRequest<Int> = withContext(Dispatchers.IO) {
         return@withContext try {
-            api.deleteStoredDeviceData(deviceId, storedDeviceDataType, until).awaitLast()
+            api.deleteStoredDeviceData(deviceId, storedDeviceDataType, until)
             ResultOfRequest.Success()
         } catch (e: Exception) {
             ResultOfRequest.Failure("Failed to delete $storedDeviceDataType files from device", e)
