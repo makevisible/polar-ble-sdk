@@ -65,21 +65,25 @@ public class BleBasClient: BleGattClientBase {
     private func parseChargeState(from data: Data) -> ChargeState {
         let dataHex = data.map { String(format: "%02X", $0) }.joined(separator: " ")
         BleLogger.trace("Parsing charge state from data: \(dataHex)")
-
-        let chargeStateValue = data[1] & 0xF3
+        guard data.count > 0 else {
+            BleLogger.error("Charge state: data is empty?")
+            BleLogger.trace("Charge state: Unknown")
+            return .unknown
+        }
+        let chargeStateValue = (data[1] & 0x60) >> 5
 
         switch chargeStateValue {
-        case 0xA3:
+        case 1:
             BleLogger.trace("Charge state: Charging")
             return .charging
-        case 0xC3:
-            BleLogger.trace("Charge state: Discharging Inactive")
-            return .dischargingInactive
-        case 0xC1:
+        case 2:
             BleLogger.trace("Charge state: Discharging Active")
             return .dischargingActive
+        case 3:
+            BleLogger.trace("Charge state: Discharging Inactive")
+            return .dischargingInactive
         default:
-            BleLogger.trace("Charge state: Unknown")
+            BleLogger.trace("Charge state: Unknown (value: \(chargeStateValue))")
             return .unknown
         }
     }

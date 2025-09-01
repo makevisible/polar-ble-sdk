@@ -72,12 +72,12 @@ extension PolarBleApiImpl: PolarSleepApi {
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Single.error(PolarErrors.serviceNotFound)
             }
-
+            
             var sleepDataList = [PolarSleepData.PolarSleepAnalysisResult]()
             let calendar = Calendar.current
             var datesList = [Date]()
             var currentDate = fromDate
-
+            
             if (fromDate == toDate) {
                 datesList.append(fromDate)
             } else {
@@ -90,11 +90,14 @@ extension PolarBleApiImpl: PolarSleepApi {
                     }
                 }
             }
-
+            
             return Observable.from(datesList)
                 .flatMap { date -> Single<(PolarSleepData.PolarSleepAnalysisResult)> in
-                    return PolarSleepUtils.readSleepFromDayDirectory(client: client, date: date)
-                        .map { sleepData -> (PolarSleepData.PolarSleepAnalysisResult) in
+                    return PolarSleepUtils
+                        .readSleepFromDayDirectory(client: client, date: date)
+                        .map { sleepData -> (
+                            PolarSleepData.PolarSleepAnalysisResult
+                        ) in
                             return sleepData
                         }
                 }
@@ -105,7 +108,9 @@ extension PolarBleApiImpl: PolarSleepApi {
                     sleepDataList.append(contentsOf: sleepAnalysisResult)
                     for sleepData in sleepDataList {
                         if (sleepData.sleepStartTime == nil) {
-                            if let index = sleepDataList.firstIndex(where: { $0.lastModified == sleepData.lastModified }) {
+                            if let index = sleepDataList.firstIndex(
+                                where: { $0.lastModified == sleepData.lastModified
+                                }) {
                                 sleepDataList.remove(at: index)
                             }
                         }
@@ -116,5 +121,4 @@ extension PolarBleApiImpl: PolarSleepApi {
             return Single.error(error)
         }
     }
-    
 }

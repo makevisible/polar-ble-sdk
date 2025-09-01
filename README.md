@@ -35,12 +35,11 @@ The SDK API uses ReactiveX. You can read more about ReactiveX from their website
 - [Polar Verity Sense](./documentation/products/PolarVeritySense.md)
 - [Polar OH1](./documentation/products/PolarOH1.md)
 - [Polar Ignite 3](./documentation/products/PolarIgnite3.md)
-- [Polar Vantage V3 and Polar Grit X2 Pro](./documentation/products/PolarVantageV3andGritX2Pro.md)
+- [Polar Vantage V3, Vantage M3 and Polar Grit X2 Pro](./documentation/products/PolarVantageV3andGritX2Pro.md)
 - [Polar Pacer and Polar Pacer Pro](./documentation/products/PolarPacerAndPacerPro.md)
 
 ## Project structure
-* [polar-sdk-ios](polar-sdk-ios/) contains source documentation for the iOS SDK source
-* [polar-sdk-android](polar-sdk-android/) contains source documentation for the Android SDK source
+* [technical_documentation](technical_documentation) contains technical documentation
 * [demos](demos/) contains Android ecg demo application 
 * [examples](examples/) contains both android and ios example app utilizing most of the features from sdk 
 * [documentation](documentation/) contains documentation related to SDK
