@@ -2905,11 +2905,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return flowable.subscribeOn(Schedulers.io(), false)
     }
 
-
-    override fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus> {
-        return updateFirmware(identifier, firmwareUrl = "")
-    }
-
     override fun checkFirmwareUpdate(identifier: String): Observable<CheckFirmwareUpdateStatus> {
         val session = try {
             sessionPsFtpClientReady(identifier)
@@ -4025,42 +4020,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         } else {
             return Completable.complete()
         }
-    }
-
-    override fun setMultiBLEConnectionMode(identifier: String, enable: Boolean): Completable {
-        val session = try {
-            sessionPsPfcClientReady(identifier)
-        } catch (error: Throwable) {
-            return Completable.error(error)
-        }
-        val client = session.fetchClient(PFC_SERVICE) as BlePfcClient? ?: return Completable.error(
-            PolarServiceNotAvailable()
-        )
-        BleLogger.d(TAG, "Send multi BLE enable notification to device $identifier with mode $enable.")
-        return client.sendControlPointCommand(
-            PfcMessage.PFC_CONFIGURE_MULTI_CONNECTION_SETTING, if (enable) 1 else 0)
-            .map { pfcResponse: PfcResponse -> {
-                    if (pfcResponse.status.toInt() != 1) {
-                        Completable.error(PolarOperationNotSupported())
-                    } else {
-                        Completable.complete()
-                    }
-                }
-            }.ignoreElement()
-    }
-
-    override fun getMultiBLEConnectionMode(identifier: String): Single<Boolean> {
-        val session = try {
-            sessionPsPfcClientReady(identifier)
-        } catch (error: Throwable) {
-            return Single.error(error)
-        }
-        val client = session.fetchClient(PFC_SERVICE) as BlePfcClient? ?: return Single.error(PolarServiceNotAvailable())
-        BleLogger.d(TAG, "Request multi BLE mode status from device $identifier.")
-        return client.sendControlPointCommand (PfcMessage.PFC_REQUEST_MULTI_CONNECTION_SETTING, null)
-            .map { pfcResponse: PfcResponse ->
-                pfcResponse.payload[0].toInt() == 1
-            }
     }
 
     override fun setMultiBLEConnectionMode(identifier: String, enable: Boolean): Completable {
