@@ -2462,7 +2462,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                                 _ = setTimeCompletable
                                                     .subscribe(
                                                         onCompleted: {
-                                                            _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
+                                                            _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier).subscribe()
                                                             completable(.completed)
                                                         },
                                                         onError: { error in
@@ -2477,7 +2477,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 }
                             },
                             onDisposed: {
-                                _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
+                                _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier).subscribe()
                             }
                         )
                 } catch let error {
