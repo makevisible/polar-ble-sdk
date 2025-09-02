@@ -3854,7 +3854,7 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
 
-    private func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+    func getFile(identifier: String, filePath: String) -> Observable<NSData> {
         do {
             let session = try self.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
@@ -3951,8 +3951,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                     }
                     return Disposables.create()
                 })
-                .ignoreElements()
-                .asCompletable()
                 .subscribe(onCompleted: {
                     if firmwareFilePath.contains("SYSUPDAT.IMG") {
                         BleLogger.trace("writeFirmwareToDevice(): Firmware file is SYSUPDAT.IMG, waiting for reboot")
@@ -3967,9 +3965,6 @@ extension PolarBleApiImpl: PolarBleApi  {
                         observer.onError(error)
                     }
                 })
-            } catch {
-                observer.onError(error)
-            }
             
             return Disposables.create()
         }
