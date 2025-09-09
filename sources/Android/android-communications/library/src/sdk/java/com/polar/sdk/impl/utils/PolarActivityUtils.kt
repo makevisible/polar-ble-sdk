@@ -188,10 +188,10 @@ internal object PolarActivityUtils {
     /**
      * Read and return activity samples data for a given date.
      */
-    fun readActivitySamplesDataFromDayDirectory(client: BlePsFtpClient, date: Date): Single<PolarActivitySamplesDayData> {
+    fun readActivitySamplesDataFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<PolarActivitySamplesDayData> {
         BleLogger.d(TAG, "readActivitySamplesDataFromDayDirectory: $date")
         return Single.create { emitter ->
-            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${ACTIVITY_DIRECTORY}"
+            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${dateFormatter.format(date)}/${ACTIVITY_DIRECTORY}"
             var fileList = mutableListOf<String>()
             var activitySamplesDataList: MutableList<PolarActivitySamplesData> = mutableListOf()
             var activitySamplesDayData = PolarActivitySamplesDayData()

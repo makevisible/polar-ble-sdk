@@ -3273,25 +3273,15 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Single.error(PolarServiceNotAvailable())
 
-        var currentDate: LocalDate = fromDate
-
-        val datesList = mutableListOf<LocalDateTime>()
-
-        while (!currentDate.isAfter(toDate)) {
-            datesList.add(currentDate.atStartOfDay())
-            currentDate = currentDate.plusDays(1)
-        }
+        val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
-            .flatMapSingle { date ->
-                PolarActivityUtils.readActivitySamplesDataFromDayDirectory(
-                    client, Date.from(date.atZone(ZoneId.systemDefault()).toInstant())
-                )}.map { activitySamplesDataList ->
-                    activitySamplesDataList
-                }.toList()
+            .flatMapSingle { date -> PolarActivityUtils.readActivitySamplesDataFromDayDirectory(client, date) }
+            .map { activitySamplesDataList -> activitySamplesDataList }
+            .toList()
     }
 
-    override fun getDistance(identifier: String, fromDate: Date, toDate: Date): Single<List<PolarDistanceData>> {
+    override fun getDistance(identifier: String, fromDate: LocalDate, toDate: LocalDate): Single<List<PolarDistanceData>> {
         val session = try {
             sessionPsFtpClientReady(identifier)
         } catch (error: Throwable) {
