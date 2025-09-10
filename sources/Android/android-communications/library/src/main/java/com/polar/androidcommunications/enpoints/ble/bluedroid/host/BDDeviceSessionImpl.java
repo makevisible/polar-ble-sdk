@@ -77,9 +77,6 @@ public class BDDeviceSessionImpl extends BleDeviceSession implements BleGattTxIn
                         BDBondingListener bondingManager,
                         BleGattFactory factory) {
         super();
-        
-        BleLogger.d(TAG, "BDDeviceSessionImpl constructor called");
-
         this.context = context;
         this.handler = new Handler(context.getMainLooper());
         this.bluetoothDevice = bluetoothDevice;

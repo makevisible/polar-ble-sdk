@@ -46,7 +46,6 @@ import com.polar.androidcommunications.http.client.HttpResponseCodes
 import com.polar.androidcommunications.http.client.RetrofitClient
 import com.polar.androidcommunications.http.fwu.FirmwareUpdateApi
 import com.polar.androidcommunications.http.fwu.FirmwareUpdateRequest
-import com.polar.sdk.api.model.PolarFirmwareVersionInfo
 import com.polar.sdk.api.model.PolarExerciseSession
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallbackProvider
@@ -2896,25 +2895,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
-    override fun getFirmwareInfo(identifier: String): Single<PolarFirmwareVersionInfo> {
-        try {
-            BleLogger.d(TAG, "Getting firmware info for identifier: $identifier")
-            
-            val session = sessionPsFtpClientReady(identifier)
-            val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient
+    override fun updateFirmware(identifier: String, firmwareUrl: String): Flowable<FirmwareUpdateStatus> {
 
-            return PolarFirmwareUpdateUtils.readDeviceFirmwareInfo(client, identifier)
-        } catch (e: Exception) {
-            BleLogger.e(TAG, "Error reading firmware info. $e")
-            return Single.error(e)
-        }
-    }
-
-    override fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus> {
-        return updateFirmware(identifier, firmwareUrl = "", version = "")
-    }
-
-    override fun updateFirmware(identifier: String, firmwareUrl: String, version: String): Flowable<FirmwareUpdateStatus> {
         val session = sessionPsFtpClientReady(identifier)
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient
         sendInitializationAndStartSyncNotifications(identifier).blockingGet()
@@ -3052,6 +3034,11 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val flowable = observable.toFlowable(BackpressureStrategy.BUFFER)
         return flowable.subscribeOn(Schedulers.io(), false)
+    }
+
+
+    override fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus> {
+        return updateFirmware(identifier, firmwareUrl = "")
     }
 
     override fun checkFirmwareUpdate(identifier: String): Observable<CheckFirmwareUpdateStatus> {
@@ -4019,22 +4006,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     disposable.dispose()
                 }
             })
-    }
-
-    private fun isPftpClientReady(identifier: String): Boolean {
-        try {
-            val session = sessionPsFtpClientReady(identifier)
-    
-            val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
-            if (client != null) {
-                return true
-            }
-    
-            return false
-        }
-        catch (error: Throwable) {
-            return false
-        }
     }
 
     override fun deleteStoredDeviceData(identifier: String, dataType: PolarStoredDataType, until: LocalDate?): Completable {

@@ -1892,6 +1892,7 @@ extension PolarBleApiImpl: PolarBleApi  {
             return self.removeOfflineRecord(identifier, entry: entry).subscribe()
         }
     }
+
     func mapDeviceDataTypeToOfflineRecordingFileName(type: PolarDeviceDataType) throws -> String {
          switch type {
              case .acc: return "ACC"
@@ -2533,24 +2534,6 @@ extension PolarBleApiImpl: PolarBleApi  {
         }
     }
   
-    func getFirmwareInfo(_ identifier: String) -> PolarFirmwareVersionInfo? {
-      do {
-        let session = try self.sessionFtpClientReady(identifier)
-        guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-          return nil
-        }
-        
-        guard let deviceInfo = PolarFirmwareUpdateUtils.readDeviceFirmwareInfo(client: client, deviceId: identifier) else {
-          return nil
-        }
-        
-        return deviceInfo
-      } catch {
-        BleLogger.error("Error during fetching firmware info: \(error)")
-        return nil
-      }
-    }
-
     func checkFirmwareUpdate(_ identifier: String) -> Observable<CheckFirmwareUpdateStatus> {
         let fwApi = FirmwareUpdateApi()
         
@@ -2641,11 +2624,13 @@ extension PolarBleApiImpl: PolarBleApi  {
        return updateFirmware(identifier, firmwareURL: nil)
     }
     
-    func updateFirmware(_ identifier: String, fromFirmwareURL: URL, version: String) -> Observable<FirmwareUpdateStatus> {
-       return updateFirmware(identifier, firmwareURL: fromFirmwareURL, version: version)
+    func updateFirmware(_ identifier: String, fromFirmwareURL: URL) -> Observable<FirmwareUpdateStatus> {
+       return updateFirmware(identifier, firmwareURL: fromFirmwareURL)
     }
         
-    private func updateFirmware(_ identifier: String, firmwareURL: URL? = nil, version: String? = nil) -> Observable<FirmwareUpdateStatus> {
+    private func updateFirmware(_ identifier: String, firmwareURL: URL? = nil) -> Observable<FirmwareUpdateStatus> {
+        
+        
         let session = try? self.sessionFtpClientReady(identifier)
         guard let client = session?.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
             return Observable.just(FirmwareUpdateStatus.fwUpdateFailed(details: "No BlePsFtpClient available"))
@@ -4101,7 +4086,8 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
 
     private func writeFirmwareToDevice(deviceId: String, firmwareFilePath: String, firmwareBytes: Data) -> Observable<UInt> {
-        BleLogger.trace("writeFirmwareToDevice(): deviceId: \(deviceId), firmwareFilePath: \(firmwareFilePath)")
+
+        BleLogger.trace("Write FW to device")
         return Observable.create { observer in
             
             guard let session = try? self.sessionFtpClientReady(deviceId) else {
@@ -4161,15 +4147,10 @@ extension PolarBleApiImpl: PolarBleApi  {
                     return Disposables.create()
                 })
                 .subscribe(onCompleted: {
-                    if firmwareFilePath.contains("SYSUPDAT.IMG") {
-                        BleLogger.trace("writeFirmwareToDevice(): Firmware file is SYSUPDAT.IMG, waiting for reboot")
-                    }
                     observer.onCompleted()
                 }, onError: { error in
                     observer.onError(self.handleError(error))
                 })
-            
-            return Disposables.create()
         }
     }
 
@@ -4217,18 +4198,6 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Disposables.create {
                 disposable?.dispose()
             }
-        }
-    }
-    
-    private func isPftpClientReady(_ identifier: String) -> Bool {
-        do {
-            let session = try self.sessionFtpClientReady(identifier)
-            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                return false
-            }
-            return true
-        } catch _ {
-            return false
         }
     }
 

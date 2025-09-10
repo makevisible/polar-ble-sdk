@@ -4,7 +4,7 @@ import Foundation
 import RxSwift
 import Zip
 
-public class PolarFirmwareUpdateUtils {
+class PolarFirmwareUpdateUtils {
     static let FIRMWARE_UPDATE_FILE_PATH = "/SYSUPDAT.IMG"
     static let DEVICE_FIRMWARE_INFO_PATH = "/DEVICE.BPB"
 

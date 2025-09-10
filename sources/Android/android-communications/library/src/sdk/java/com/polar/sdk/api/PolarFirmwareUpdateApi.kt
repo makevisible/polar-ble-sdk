@@ -4,8 +4,6 @@ package com.polar.sdk.api
 import com.polar.sdk.api.model.CheckFirmwareUpdateStatus
 import com.polar.sdk.api.model.FirmwareUpdateStatus
 import io.reactivex.rxjava3.core.Flowable
-import io.reactivex.rxjava3.core.Single
-import com.polar.sdk.api.model.PolarFirmwareVersionInfo
 import io.reactivex.rxjava3.core.Observable
 
 /**
@@ -32,7 +30,6 @@ interface PolarFirmwareUpdateApi {
      */
     fun updateFirmware(identifier: String): Flowable<FirmwareUpdateStatus>
 
-
     /**
      * Updates firmware to given device from specific URL.
      *
@@ -40,13 +37,5 @@ interface PolarFirmwareUpdateApi {
      * @param firmwareUrl URL to firmware file. Firmware file must be compatible with target device
      * @return [Flowable] emitting status of firmware update
      */
-    fun updateFirmware(identifier: String, firmwareUrl: String, version: String): Flowable<FirmwareUpdateStatus>
-
-    /**
-     * Get firmware info for given device.
-     *
-     * @param identifier Polar device ID or BT address
-     * @return [Single] emitting firmware info
-     */
-    fun getFirmwareInfo(identifier: String): Single<PolarFirmwareVersionInfo>
+    fun updateFirmware(identifier: String, firmwareUrl: String): Flowable<FirmwareUpdateStatus>
 }

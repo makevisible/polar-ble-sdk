@@ -18,8 +18,8 @@ public enum FirmwareUpdateStatus {
     case fwUpdateFailed(details: String)
 }
 
-public struct PolarFirmwareVersionInfo {
-    public let deviceFwVersion: String
-    public let deviceModelName: String
-    public let deviceHardwareCode: String
+struct PolarFirmwareVersionInfo {
+    let deviceFwVersion: String
+    let deviceModelName: String
+    let deviceHardwareCode: String
 }
