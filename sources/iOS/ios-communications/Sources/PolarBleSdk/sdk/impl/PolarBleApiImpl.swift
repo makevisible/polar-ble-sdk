@@ -2482,7 +2482,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 }
                             },
                             onDisposed: {
-                                _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier).subscribe()
+                                _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
                             }
                         )
                 } catch let error {
