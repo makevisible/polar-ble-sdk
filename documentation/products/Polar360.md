@@ -1,9 +1,9 @@
 [Back to main page](../../README.md)
 
-# Polar 360
+# Polar 360 & Polar Loop
 
-- [Polar 360](#polar-360)
-  - [Polar 360 features available by the SDK](#polar-360-features-available-by-the-sdk)
+- [Polar 360 & Polar Loop](#polar-360)
+  - [Polar 360 and Polar Loop features available by the SDK](#polar-360-and-polar-loop-features-available-by-the-sdk)
     - [Online streaming and offline recording](#online-streaming-and-offline-recording)
     - [Data export](#data-export)
     - [Device management](#device-management)
@@ -14,7 +14,7 @@
     - [BLE functionnality](#ble-functionnality)
     - [Memory management](#memory-management)
   - [SDK Mode available settings](#sdk-mode-available-settings)
-  - [Polar 360 UI animations](#polar-360-ui-animations)
+  - [Polar 360 and Polar Loop UI animations](#polar-360-and-polar-loop-ui-animations)
     - [Start](#start)
     - [Charging](#charging)
     - [Charging completed](#charging-completed)
@@ -26,7 +26,9 @@ Polar 360 is a new stylish wearable that is designed for individuals but made fo
 It is a device designed to increase general well-being and to make the lives of end users healthier and happier. 
 [Store page](https://www.polar.com/en/business/polar-360)
 
-## Polar 360 features available by the SDK
+POLAR Loop is a screen-free wearable that automatically tracks daily activity, training, sleep, and recovery. For developers, it offers continuous, reliable data and long-term health insights for seamless integration into their own ecosystems.
+
+## Polar 360 and Polar loop features available by the SDK
 
 ### Online streaming and offline recording
 * Heart rate as beats per minute.
@@ -37,7 +39,8 @@ It is a device designed to increase general well-being and to make the lives of 
 * [Offline recording](../SdkOfflineRecordingExplained.md)
 
 ### Data export
-* Sleep data [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarSleepApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarSleepApi.html), 
+* Sleep data [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarSleepApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarSleepApi.html)
+* Training sessions [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarTrainingSessionApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarTrainingSessionApi.html)
 * Activity data [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarActivityApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarActivityApi.html)
   * Steps
   * Active time
@@ -46,6 +49,10 @@ It is a device designed to increase general well-being and to make the lives of 
   * Nightly recharge data
   * Skin temperature data
   * 24/7 PPi samples
+  * Activity sample data
+      * step count with one minute interval (1440 samples per day)
+      * MET samples with 30 sec interval (2880 samples per day)
+      * Activity levels
 
 ### Device management
 * get battery level
@@ -160,7 +167,7 @@ Activity and sleep data is passively recorded by the device overtime and will st
 
 [1] Sampling rate of 100Hz in PPG is not confirmed yet (FW. 2.0.8)
    
-## Polar 360 UI animations 
+## Polar 360 and Polar Loop UI animations 
 
 As a headless device, Polar 360 uses the optical heart rate sensor LEDs to communicate information back to the user : 
 

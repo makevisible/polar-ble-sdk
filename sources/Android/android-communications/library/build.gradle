@@ -76,12 +76,6 @@ android {
         }
     }
 
-    sourceSets {
-        main {
-            java.srcDirs += 'src/sdk'
-            proto.srcDirs += 'src/sdk/proto'
-            }
-    }
     packagingOptions {
         exclude "**/*.proto"
     }

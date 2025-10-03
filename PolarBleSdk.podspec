@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
     s.source            = { :git => 'https://github.com/makevisible/polar-ble-sdk.git', :tag => s.version.to_s }
 
     s.ios.deployment_target = '14.0'
-    
+
     s.source_files = 'sources/iOS/ios-communications/Sources/**/*.swift'
 
     s.dependency 'RxSwift', '~> 6.8.0'

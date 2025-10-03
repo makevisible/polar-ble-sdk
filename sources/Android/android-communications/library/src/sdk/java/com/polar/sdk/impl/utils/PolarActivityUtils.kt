@@ -18,7 +18,9 @@ import org.reactivestreams.Publisher
 import protocol.PftpRequest
 import protocol.PftpResponse.PbPFtpDirectory
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
+import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 import java.time.LocalDate
@@ -27,7 +29,8 @@ private const val ARABICA_USER_ROOT_FOLDER = "/U/0/"
 private const val ACTIVITY_DIRECTORY = "ACT/"
 private const val DAILY_SUMMARY_DIRECTORY = "DSUM/"
 private const val DAILY_SUMMARY_PROTO = "DSUM.BPB"
-private val dateFormat = DateTimeFormatter.ofPattern("yyyyMMdd", Locale.ENGLISH)
+private val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.ENGLISH)
+private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 private const val TAG = "PolarActivityUtils"
 
 enum class CaloriesType {
@@ -39,10 +42,10 @@ internal object PolarActivityUtils {
     /**
      * Read step count for given [date].
      */
-    fun readStepsFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<Int> {//: Disposable {
+    fun readStepsFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<Int> {
         BleLogger.d(TAG, "readStepsFromDayDirectory: $date")
         return Single.create { emitter ->
-            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${ACTIVITY_DIRECTORY}"
+            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${ACTIVITY_DIRECTORY}"
             var fileList = mutableListOf<String>()
             var stepCount = 0
 
@@ -95,7 +98,7 @@ internal object PolarActivityUtils {
     fun readDistanceFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<Float> {
         BleLogger.d(TAG, "readDistanceFromDayDirectory: $date")
         return Single.create { emitter ->
-                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
+                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
                         .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
@@ -121,7 +124,7 @@ internal object PolarActivityUtils {
     fun readActiveTimeFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<PolarActiveTimeData> {
         BleLogger.d(TAG, "readActiveTimeFromDayDirectory: $date")
         return Single.create { emitter ->
-                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
+                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
                         .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
@@ -158,7 +161,7 @@ internal object PolarActivityUtils {
     fun readSpecificCaloriesFromDayDirectory(client: BlePsFtpClient, date: LocalDate, caloriesType: CaloriesType): Single<Int> {
         BleLogger.d(TAG, "readSpecificCaloriesFromDayDirectory: $date, type: $caloriesType")
         return Single.create { emitter ->
-                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
+                val dailySummaryFilePath = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${DAILY_SUMMARY_DIRECTORY}${DAILY_SUMMARY_PROTO}"
                 val disposable = client.request(
                     PftpRequest.PbPFtpOperation.newBuilder()
                         .setCommand(PftpRequest.PbPFtpOperation.Command.GET)

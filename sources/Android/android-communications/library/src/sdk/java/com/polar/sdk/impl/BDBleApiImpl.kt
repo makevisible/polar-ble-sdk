@@ -26,7 +26,6 @@ import com.polar.androidcommunications.api.ble.model.gatt.client.BlePfcClient
 import com.polar.androidcommunications.api.ble.model.gatt.client.BlePfcClient.PFC_SERVICE
 import com.polar.androidcommunications.api.ble.model.gatt.client.BlePfcClient.PfcMessage
 import com.polar.androidcommunications.api.ble.model.gatt.client.BlePfcClient.PfcResponse
-import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
 import com.polar.androidcommunications.api.ble.model.gatt.client.HealthThermometer
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.*
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdControlPointResponse.PmdControlPointResponseCode
@@ -100,6 +99,7 @@ import com.polar.sdk.impl.utils.receiveRestApiEvents
 import com.polar.sdk.impl.utils.toObject
 import fi.polar.remote.representation.protobuf.AutomaticSamples.PbAutomaticSampleSessions
 import fi.polar.remote.representation.protobuf.ExerciseSamples.PbExerciseSamples
+import fi.polar.remote.representation.protobuf.PhysData
 import fi.polar.remote.representation.protobuf.Types.*
 import fi.polar.remote.representation.protobuf.UserIds
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
@@ -127,7 +127,6 @@ import com.polar.sdk.api.PolarTrainingSessionApi
 import com.polar.sdk.impl.utils.PolarTrainingSessionUtils
 import fi.polar.remote.representation.protobuf.UserDeviceSettings
 import fi.polar.remote.representation.protobuf.UserDeviceSettings.PbUserDeviceSettings
-import com.polar.sdk.api.model.activity.PolarActivitySamplesData
 import com.polar.sdk.api.model.activity.PolarActivitySamplesDayData
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -943,61 +942,58 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                                 entry.matches(Regex("^(\\d{6})(/)")) ||
                                 entry.contains(".REC")
                     }
-                )
-                    /// If mapping single entry fails, we return empty flowable so that 
-                    /// we can continue to the next entry.
-                    .flatMap { entry: Pair<String, Long> ->
-                        try {
-                            val components = entry.first.split("/").toTypedArray()
-                            val format = SimpleDateFormat("yyyyMMdd HHmmss", Locale.getDefault())
-                            val date = format.parse(components[3] + " " + components[5])
-                                ?: throw PolarInvalidArgument(
-                                    "Listing offline recording failed. Cannot parse create data from date ${components[3]} and time ${components[5]}"
-                                )
-                            val type = mapPmdClientFeatureToPolarFeature(
-                                mapOfflineRecordingFileNameToMeasurementType(components[6])
+                ).flatMap { entry: Pair<String, Long> ->
+                    try {
+                        val components = entry.first.split("/").toTypedArray()
+                        val format = SimpleDateFormat("yyyyMMdd HHmmss", Locale.getDefault())
+                        val date = format.parse(components[3] + " " + components[5])
+                            ?: throw PolarInvalidArgument(
+                                "Listing offline recording failed. Cannot parse create data from date ${components[3]} and time ${components[5]}"
                             )
-                            val recordingEntry = PolarOfflineRecordingEntry(
-                                path = entry.first,
-                                size = entry.second,
-                                date = date,
-                                type = type
-                            )
-                            Flowable.just(recordingEntry)
-                        } catch (e: Exception) {
-                            BleLogger.e(TAG, "Error processing offline recording entry ${entry.first}: ${e.message}")
-                            Flowable.empty<PolarOfflineRecordingEntry>()
-                        }
+                        val type = mapPmdClientFeatureToPolarFeature(
+                            mapOfflineRecordingFileNameToMeasurementType(components[6])
+                        )
+                        val recordingEntry = PolarOfflineRecordingEntry(
+                            path = entry.first,
+                            size = entry.second,
+                            date = date,
+                            type = type
+                        )
+                        Flowable.just(recordingEntry)
+                    } catch (e: Exception) {
+                        BleLogger.e(TAG, "Error processing offline recording entry ${entry.first}: ${e.message}")
+                        Flowable.empty<PolarOfflineRecordingEntry>()
                     }
-                    .groupBy { entry -> entry.date }
-                    .onBackpressureBuffer(2048, null, BackpressureOverflowStrategy.DROP_LATEST)
-                    .flatMap { groupedEntries ->
-                        groupedEntries
-                            .toList()
-                            .flatMapPublisher { entriesList ->
-                                var totalSize = 0
-                                entriesList.forEach { (_, size) ->
-                                    totalSize += size.toInt()
+                }
+                .groupBy { entry -> entry.date }
+                .onBackpressureBuffer(2048, null, BackpressureOverflowStrategy.DROP_LATEST)
+                .flatMap { groupedEntries ->
+                    groupedEntries
+                        .toList()
+                        .flatMapPublisher { entriesList ->
+                            var totalSize = 0
+                            entriesList.forEach { (_, size) ->
+                                totalSize += size.toInt()
+                            }
+                            Flowable.fromIterable(
+                                entriesList.map {
+                                    PolarOfflineRecordingEntry(
+                                        path = it.path.replace(
+                                            Regex("\\d*\\.REC$"),
+                                            ".REC"
+                                        ),
+                                        size = totalSize.toLong(),
+                                        date = it.date,
+                                        type = it.type
+                                    )
                                 }
-                                Flowable.fromIterable(
-                                    entriesList.map {
-                                        PolarOfflineRecordingEntry(
-                                            path = it.path.replace(
-                                                Regex("\\d*\\.REC$"),
-                                                ".REC"
-                                            ),
-                                            size = totalSize.toLong(),
-                                            date = it.date,
-                                            type = it.type
-                                        )
-                                    }
-                                )
-                            }
-                            .distinct { entry -> entry.date }
-                            .onErrorResumeNext { throwable: Throwable ->
-                                Flowable.error(handleError(throwable))
-                            }
-                    }
+                            )
+                        }
+                        .distinct { entry -> entry.date }
+                        .onErrorResumeNext { throwable: Throwable ->
+                            Flowable.error(handleError(throwable))
+                        }
+                }
             }
             else -> Flowable.error(PolarServiceNotAvailable())
         }
@@ -2286,6 +2282,55 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         }
     }
 
+    override fun getUserPhysicalConfiguration(identifier: String): Maybe<PolarPhysicalConfiguration> {
+        return Maybe.create { emitter ->
+            try {
+                val session = sessionPsFtpClientReady(identifier)
+                val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
+                    ?: throw PolarServiceNotAvailable()
+
+                val ftuFilePath = PolarFirstTimeUseConfig.FTU_CONFIG_FILENAME
+
+                val disposable = client.request(
+                    PftpRequest.PbPFtpOperation.newBuilder()
+                        .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
+                        .setPath(ftuFilePath)
+                        .build()
+                        .toByteArray()
+                ).subscribe(
+                    { response ->
+                        try {
+                            val pbUserPhysData = PhysData.PbUserPhysData.parseFrom(response.toByteArray())
+                            val ftuConfig = pbUserPhysData.toPolarPhysicalConfiguration()
+                            emitter.onSuccess(ftuConfig)
+                        } catch (parseError: Exception) {
+                            BleLogger.e(TAG, "Failed to parse FTU data for device $identifier: $parseError")
+                            emitter.onError(parseError)
+                        }
+                    },
+                    { throwable ->
+                        val error = (throwable as? PftpResponseError)?.error
+                        if (error == PbPFtpError.NO_SUCH_FILE_OR_DIRECTORY.number) {
+                            BleLogger.d(TAG, "Phys data file does not exist on device $identifier")
+                            emitter.onComplete()
+                        } else {
+                            BleLogger.e(
+                                TAG,
+                                "Unexpected error reading phys data file for device $identifier: ${throwable.message}"
+                            )
+                            emitter.onError(throwable)
+                        }
+                    }
+                )
+
+                emitter.setDisposable(disposable)
+            } catch (error: Throwable) {
+                BleLogger.e(TAG, "getUserPhysicalConfiguration(identifier: $identifier) error: $error")
+                emitter.onError(error)
+            }
+        }
+    }
+
     override fun startExercise(identifier: String, profile: PolarExerciseSession.SportProfile): Completable {
         BleLogger.d(TAG, "Start exercise pressed for $identifier with profile=$profile")
         return Single.fromCallable {
@@ -3232,7 +3277,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             ?: return Single.error(PolarServiceNotAvailable())
 
         val stepsDataList = mutableListOf<Pair<LocalDate, Int>>()
-
         val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
@@ -3278,7 +3322,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             ?: return Single.error(PolarServiceNotAvailable())
 
         val distanceDataList = mutableListOf<Pair<LocalDate, Float>>()
-
         val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
@@ -3399,6 +3442,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
         val caloriesDataList = mutableListOf<Pair<LocalDate, Int>>()
 
+        val calendar = Calendar.getInstance()
         val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
@@ -3691,7 +3735,6 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
             ?: return Single.error(PolarServiceNotAvailable())
 
         val nightlyRechargeDataList = mutableListOf<PolarNightlyRechargeData>()
-
         val datesList = getDatesBetween(fromDate, toDate)
 
         return Observable.fromIterable(datesList)
@@ -4527,6 +4570,18 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                                         )
                                     },
                                     { error -> BleLogger.e(TAG, "Charging status error: $error") }
+                                )
+
+                            bleBattClient.monitorPowerSourcesState(true)
+                                .observeOn(AndroidSchedulers.mainThread())
+                                .subscribe(
+                                    { state ->
+                                        callback?.powerSourcesStateReceived(
+                                            deviceId,
+                                            state
+                                        )
+                                    },
+                                    { error -> BleLogger.e(TAG, "Power sources state error: $error") }
                                 )
 
                             Flowable.empty()
