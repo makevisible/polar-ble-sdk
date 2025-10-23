@@ -2391,113 +2391,118 @@ extension PolarBleApiImpl: PolarBleApi  {
     }
 
     func doFirstTimeUse(_ identifier: String, ftuConfig: PolarFirstTimeUseConfig) -> Completable {
-            return Completable.create { completable in
-                do {
-                    let session = try self.sessionFtpClientReady(identifier)
-                    guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-                        completable(.error(PolarErrors.deviceError(description: "Failed to fetch GATT client.")))
-                        return Disposables.create()
-                    }
+        return Completable.create { completable in
+            do {
+                let session = try self.sessionFtpClientReady(identifier)
+                guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                    completable(.error(PolarErrors.deviceError(description: "Failed to fetch GATT client.")))
+                    return Disposables.create()
+                }
 
-                    let ftuConfigProto = try ftuConfig.toProto()?.serializedData() ?? {
-                        throw PolarErrors.deviceError(description: "Serialization of FTU Config failed.")
-                    }()
+                // Setup user physical data completable
+                let ftuConfigProto = try ftuConfig.toProto()?.serializedData() ?? {
+                    throw PolarErrors.deviceError(description: "Serialization of FTU Config failed.")
+                }()
+                var physicalDataOperation = Protocol_PbPFtpOperation()
+                physicalDataOperation.command = Protocol_PbPFtpOperation.Command.put
+                physicalDataOperation.path = PolarFirstTimeUseConfig.FTU_CONFIG_FILEPATH
+                let physicalDataHeader = try physicalDataOperation.serializedData()
 
-                    var ftuOperation = Protocol_PbPFtpOperation()
-                    ftuOperation.command = Protocol_PbPFtpOperation.Command.put
-                    ftuOperation.path = PolarFirstTimeUseConfig.FTU_CONFIG_FILEPATH
-                    let ftuProto = try ftuOperation.serializedData()
-
-                    let ftuData = Data(ftuConfigProto)
-                    let ftuInputStream = InputStream(data: ftuData)
-
-                    _ = self.sendInitializationAndStartSyncNotifications(identifier: identifier)
-                        .andThen(client.write(ftuProto as NSData, data: ftuInputStream))
+                let physicalDataProto = Data(ftuConfigProto)
+                let physicalDataProtoInputStream = InputStream(data: physicalDataProto)
+                let physicalDataCompletable = Completable.create { physicalDataCompletable in
+                    client.write(physicalDataHeader as NSData, data: physicalDataProtoInputStream)
                         .subscribe(
                             onError: { error in
                                 BleLogger.error("Failed to write FTU configuration to device: \(identifier) - \(error.localizedDescription)")
-                                completable(.error(error))
+                                physicalDataCompletable(.error(error))
                             },
                             onCompleted: {
-                                do {
-                                    var userIdOperation = Protocol_PbPFtpOperation()
-                                    userIdOperation.command = Protocol_PbPFtpOperation.Command.put
-                                    userIdOperation.path = UserIdentifierType.USER_IDENTIFIER_FILENAME
-
-                                    let userIdentifier = UserIdentifierType.create()
-                                    let userIdProto = try userIdentifier.toProto().serializedData()
-
-                                    let userIdData = Data(userIdProto)
-                                    let userIdInputStream = InputStream(data: userIdData)
-
-                                    _ = client.write(try userIdOperation.serializedData() as NSData, data: userIdInputStream)
-                                        .subscribe(
-                                            onError: { error in
-                                                BleLogger.error("Failed to write User ID to device: \(identifier) - \(error.localizedDescription)")
-                                                completable(.error(error))
-                                            },
-                                            onCompleted: {
-                                                let setTimeCompletable = Completable.create { setTimeCompletable in
-                                                    let isoFormatter = ISO8601DateFormatter()
-                                                    isoFormatter.timeZone = TimeZone.current
-
-                                                    guard let date = isoFormatter.date(from: ftuConfig.deviceTime) else {
-                                                        setTimeCompletable(.error(PolarErrors.deviceError(description: "Invalid deviceTime format: \(ftuConfig.deviceTime)")))
-                                                        return Disposables.create()
-                                                    }
-
-                                                    _ = self.setLocalTime(identifier, time: date, zone: TimeZone.current)
-                                                        .subscribe(
-                                                            onCompleted: {
-                                                                setTimeCompletable(.completed)
-                                                            },
-                                                            onError: { error in
-                                                                setTimeCompletable(.error(error))
-                                                            }
-                                                        )
-                                                    return Disposables.create()
-                                                }
-
-                                                _ = setTimeCompletable
-                                                    .subscribe(
-                                                        onCompleted: {
-                                                            _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
-                                                                .subscribe(
-                                                                    onCompleted: {
-                                                                        completable(.completed)
-                                                                    },
-                                                                    onError: { error in
-                                                                        completable(.error(error))
-                                                                })
-                                                        },
-                                                        onError: { error in
-                                                            completable(.error(self.handleError(error)))
-                                                        }
-                                                    )
-                                            }
-                                        )
-                                } catch let error {
-                                    BleLogger.error("Error processing User ID for device: \(identifier) - \(error.localizedDescription)")
-                                    completable(.error(self.handleError(error)))
-                                }
-                            },
-                            onDisposed: {
-                                _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
-                                    .subscribe(
-                                        onError: { error in
-                                            BleLogger.error("Error sending terminate and stop sync notifications for device: \(identifier) - \(error.localizedDescription)")
-                                    }
-                                )
+                                physicalDataCompletable(.completed)
+                                BleLogger.trace("User physical data written to device: \(identifier)")
                             }
                         )
-                } catch let error {
-                    BleLogger.error("Error processing FTU configuration for device: \(identifier) - \(error.localizedDescription)")
-                    completable(.error(error))
+                    return Disposables.create()
                 }
 
-                return Disposables.create()
+                // Setup time completable
+                let setTimeCompletable = Completable.create { setTimeCompletable in
+                    let isoFormatter = ISO8601DateFormatter()
+                    isoFormatter.timeZone = TimeZone.current
+
+                    guard let date = isoFormatter.date(from: ftuConfig.deviceTime) else {
+                        setTimeCompletable(.error(PolarErrors.deviceError(description: "Invalid deviceTime format: \(ftuConfig.deviceTime)")))
+                        return Disposables.create()
+                    }
+
+                    _ = self.setLocalTime(identifier, time: date, zone: TimeZone.current)
+                        .subscribe(
+                            onCompleted: {
+                                setTimeCompletable(.completed)
+                                BleLogger.trace("Local time set to device: \(identifier)")
+                            },
+                            onError: { error in
+                                BleLogger.error("Failed to set local time to device: \(identifier) - \(error.localizedDescription)")
+                                setTimeCompletable(.error(error))
+                            }
+                        )
+                    return Disposables.create()
+                }
+
+                // Setup user data completable
+                var userIdOperation = Protocol_PbPFtpOperation()
+                userIdOperation.command = Protocol_PbPFtpOperation.Command.put
+                userIdOperation.path = UserIdentifierType.USER_IDENTIFIER_FILENAME
+                let userIdentifier = UserIdentifierType.create()
+                let userIdProto = try userIdentifier.toProto().serializedData()
+
+                let userIdData = Data(userIdProto)
+                let userIdInputStream = InputStream(data: userIdData)
+                let userDataCompletable = Completable.create { userDataCompletable in
+                    do {
+                        client.write(try userIdOperation.serializedData() as NSData, data: userIdInputStream)
+                            .subscribe(
+                                onError: { error in
+                                    BleLogger.error("Failed to write User ID to device: \(identifier) - \(error.localizedDescription)")
+                                    userDataCompletable(.error(error))
+                                },
+                                onCompleted: {
+                                    userDataCompletable(.completed)
+                                    BleLogger.trace("User data written to device: \(identifier)")
+                                }
+                            )
+                    } catch {
+                        BleLogger.error("Failed to serialize User ID to device: \(identifier)")
+                        userDataCompletable(.error(error))
+                    }
+                    return Disposables.create()
+                }
+
+                // Act
+                _ = self.sendInitializationAndStartSyncNotifications(identifier: identifier)
+                    .andThen(setTimeCompletable)
+                    .andThen(userDataCompletable)
+                    .andThen(physicalDataCompletable)
+                    .subscribe(
+                        onError: { error in
+                            BleLogger.error("Error while performing First Time Use to device: \(identifier) - \(error.localizedDescription)")
+                        },
+                        onDisposed: {
+                             _ = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
+                                 .subscribe(
+                                     onError: { error in
+                                         BleLogger.error("Error sending terminate and stop sync notifications for device: \(identifier) - \(error.localizedDescription)")
+                                 }
+                             )
+                         }
+                    )
+            } catch let error {
+                BleLogger.error("Error processing FTU configuration for device: \(identifier) - \(error.localizedDescription)")
+                completable(.error(error))
             }
+            return Disposables.create()
         }
+    }
     
     func isFtuDone(_ identifier: String) -> Single<Bool> {
    

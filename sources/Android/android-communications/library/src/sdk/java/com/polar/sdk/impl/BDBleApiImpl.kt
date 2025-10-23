@@ -2174,66 +2174,54 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
                     ?: throw PolarServiceNotAvailable()
 
-                val ftuBuilder = PftpRequest.PbPFtpOperation.newBuilder().apply {
-                    command = PftpRequest.PbPFtpOperation.Command.PUT
-                    path = PolarFirstTimeUseConfig.FTU_CONFIG_FILENAME
-                }
-
                 val ftuData = ByteArrayOutputStream().use { baos ->
                     ftuConfig.toProto().writeTo(baos)
                     baos.toByteArray()
                 }
 
-                val ftuInputStream = ByteArrayInputStream(ftuData)
+                val ftuBuilder = PftpRequest.PbPFtpOperation.newBuilder().apply {
+                    command = PftpRequest.PbPFtpOperation.Command.PUT
+                    path = PolarFirstTimeUseConfig.FTU_CONFIG_FILENAME
+                }
+
+                val userIdentifier = UserIdentifierType.create().toProto()
+                val userIdData = ByteArrayOutputStream().use { baos ->
+                    userIdentifier.writeTo(baos)
+                    baos.toByteArray()
+                }
+                val userIdBuilder = PftpRequest.PbPFtpOperation.newBuilder().apply {
+                    command = PftpRequest.PbPFtpOperation.Command.PUT
+                    path = UserIdentifierType.USER_IDENTIFIER_FILENAME
+                }
+
+                val calendar = Calendar.getInstance().apply {
+                    val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault())
+                    isoFormat.timeZone = TimeZone.getTimeZone("UTC")
+                    time = try {
+                        isoFormat.parse(ftuConfig.deviceTime)
+                    } catch (e: ParseException) {
+                        throw IllegalArgumentException(
+                            "Invalid deviceTime format: ${ftuConfig.deviceTime}", e
+                        )
+                    }
+                }
 
                 return@defer sendInitializationAndStartSyncNotifications(identifier)
                     .ignoreElement()
                     .andThen(
-                        client.write(ftuBuilder.build().toByteArray(), ftuInputStream)
-                            .concatWith(
-                                Completable.defer {
-                                    try {
-                                        val userIdBuilder = PftpRequest.PbPFtpOperation.newBuilder().apply {
-                                            command = PftpRequest.PbPFtpOperation.Command.PUT
-                                            path = UserIdentifierType.USER_IDENTIFIER_FILENAME
-                                        }
-
-                                        val userIdentifier = UserIdentifierType.create()
-                                        val protoUserIdentifier = userIdentifier.toProto()
-
-                                        val userIdData = ByteArrayOutputStream().use { baos ->
-                                            protoUserIdentifier.writeTo(baos)
-                                            baos.toByteArray()
-                                        }
-
-                                        BleLogger.d(TAG, "doFirstTimeUse(identifier: $identifier): write user identifier")
-
-                                        val userIdInputStream = ByteArrayInputStream(userIdData)
-                                        client.write(userIdBuilder.build().toByteArray(), userIdInputStream)
-                                            .ignoreElements()
-                                            .concatWith(
-                                                Completable.defer {
-                                                    val calendar = Calendar.getInstance().apply {
-                                                        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault())
-                                                        isoFormat.timeZone = TimeZone.getTimeZone("UTC")
-                                                        time = try {
-                                                            isoFormat.parse(ftuConfig.deviceTime)
-                                                        } catch (e: ParseException) {
-                                                            throw IllegalArgumentException("Invalid deviceTime format: ${ftuConfig.deviceTime}", e)
-                                                        }
-                                                    }
-                                                    BleLogger.d(TAG, "doFirstTimeUse(identifier: $identifier): set local time")
-                                                    setLocalTime(identifier, calendar)
-                                                }
-                                            )
-                                    } catch (error: Throwable) {
-                                        BleLogger.e(TAG, "doFirstTimeUse(identifier: $identifier): write user identifier error: $error")
-                                        Completable.error(error)
-                                    }
-                                }
-                            )
+                        Completable.defer {
+                            BleLogger.d(TAG, "doFirstTimeUse(identifier: $identifier): set local time")
+                            setLocalTime(identifier, calendar)
+                        }
                     )
-                    .ignoreElements()
+                    .andThen(
+                        client.write(ftuBuilder.build().toByteArray(), ByteArrayInputStream(ftuData))
+                            .ignoreElements()
+                    )
+                    .andThen(
+                        client.write(userIdBuilder.build().toByteArray(), ByteArrayInputStream(userIdData))
+                            .ignoreElements()
+                    )
                     .doOnComplete {
                         BleLogger.d(TAG, "doFirstTimeUse(identifier: $identifier): completed")
                         sendTerminateAndStopSyncNotifications(identifier).blockingAwait()
@@ -2243,7 +2231,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     }
             } catch (error: Throwable) {
                 BleLogger.e(TAG, "doFirstTimeUse(identifier: $identifier): error $error")
-                return@defer Completable.error(error)
+                sendTerminateAndStopSyncNotifications(identifier).blockingAwait()
+                Completable.error(error)
             }
         }
     }
