@@ -34,15 +34,11 @@ internal class PolarNightlyRechargeUtils {
                     do {
                         let recoveryStatus = try Data_PbNightlyRecoveryStatus(serializedData: Data(response))
                         let recoveryDateProto = recoveryStatus.sleepResultDate
-                        guard let recoveryDate = Calendar.current.date(from: DateComponents(
-                            year: Int(recoveryDateProto.year),
-                            month: Int(recoveryDateProto.month),
-                            day: Int(recoveryDateProto.day)
-                        )) else {
+                        guard let recoveryDate = try? PolarTimeUtils.pbDateToDateComponents(pbDate: recoveryDateProto) else {
                             throw PolarNightlyRechargeError.missingOrInvalidRecoveryDate
                         }
-                        // copied from PolarSleepUtils:46 to convert sleepResultDate to string
-                        let sleepResultDate = try? PolarPlainDate.init(date: PolarTimeUtils.pbDateToDate(pbDate: recoveryStatus.sleepResultDate)).description
+                        // copied from PolarSleepUtils:46 to convert sleepResultDate to DateComponents
+                        let sleepResultDate = try PolarTimeUtils.pbDateToDateComponents(pbDate: recoveryStatus.sleepResultDate)
 
                         let createdTimestamp = try PolarTimeUtils.pbSystemDateTimeToDate(pbSystemDateTime: recoveryStatus.createdTimestamp)
                         let modifiedTimestamp = recoveryStatus.hasModifiedTimestamp ? try PolarTimeUtils.pbSystemDateTimeToDate(pbSystemDateTime: recoveryStatus.modifiedTimestamp) : nil

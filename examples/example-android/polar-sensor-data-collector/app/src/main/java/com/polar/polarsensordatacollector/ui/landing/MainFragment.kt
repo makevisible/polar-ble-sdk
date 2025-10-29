@@ -33,8 +33,7 @@ import kotlinx.coroutines.launch
 class MainFragment : Fragment(R.layout.fragment_main) {
     companion object {
         private const val TAG = "MainFragment"
-        private const val INTENSITY_SELECTION_ENABLED_ALPHA = 1.0f
-        private const val INTENSITY_SELECTION_DISABLED_ALPHA = 0.4f
+        private const val CURRENT_FRAGMENT = "current_fragment"
     }
 
     private val viewModel: MainViewModel by activityViewModels()
@@ -60,11 +59,19 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     private lateinit var wirelessPowerSourceConnectedStatus: TextView
 
     private var selectedDevice: Device? = null
+    private var selectedDeviceSupportsSettings: Boolean? = false
 
     private lateinit var onlineOfflineAdapter: OnlineOfflineAdapter
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         setupViews(view)
+
+        savedInstanceState?.let {
+            val restoredPage = it.getInt(CURRENT_FRAGMENT, 0)
+            if (this::viewPager.isInitialized) {
+                viewPager.setCurrentItem(restoredPage, false)
+            }
+        }
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -106,6 +113,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                             val deviceAddress = it.address
                             val name = it.name.replace(" ", "_")
                             selectedDevice = Device(deviceId = deviceId, address = deviceAddress, name = name)
+                            selectedDeviceSupportsSettings = info.hasSAGRFCFileSystem
                             try {
                                 selectedDevice?.let { viewModel.connectToDevice(it) }
                                 viewModel.selectedDevice = selectedDevice
@@ -167,6 +175,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                                         address = deviceAddress,
                                         name = name
                                     )
+                                    selectedDeviceSupportsSettings = info.hasSAGRFCFileSystem
                                     try {
                                         selectedDevice?.let { viewModel.connectToDevice(it) }
                                     } catch (polarInvalidArgument: PolarInvalidArgument) {
@@ -248,7 +257,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt("Current_frag", viewPager.currentItem)
+        outState.putInt(CURRENT_FRAGMENT, viewPager.currentItem)
     }
 
     private fun deviceConnectionStateChange(state: DeviceConnectionUiState) {
@@ -283,19 +292,11 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             MainViewModel.DeviceConnectionStates.CONNECTED -> {
                 connectButton.setText(R.string.search_and_connect_connections)
                 val deviceId = selectedDevice?.deviceId ?: state.deviceId
-                if (deviceId.isNullOrEmpty()) {
-                    Log.w(TAG, "Connected but deviceId missing; deferring UI build")
-                    return
-                }
                 sensorState.text = getString(R.string.device_id, deviceId)
                 connectButton.isEnabled = true
-                val alreadyConnected =
-                    selectedDevice?.let { connectedDevices.contains(it) }
-                        ?: connectedDevices.any { it.deviceId == deviceId }
-                if (!alreadyConnected) {
-                    onlineOfflineAdapter.removeFragments(isAlreadyConnected = alreadyConnected)
-                    onlineOfflineAdapter.addOnlineRecordingFragment(deviceId)
-                    onlineOfflineAdapter.addDeviceSettingsFragment(deviceId)
+                onlineOfflineAdapter.addOnlineRecordingFragment(deviceId)
+                onlineOfflineAdapter.addDeviceSettingsFragment(deviceId)
+                if (selectedDeviceSupportsSettings == true) {
                     onlineOfflineAdapter.addLoggingFragment(deviceId)
                     onlineOfflineAdapter.addActivityFragment(deviceId)
                 }

@@ -171,6 +171,38 @@ internal class PolarTimeUtils {
         }
         return date
     }
+    
+    static func pbDateToDateComponents(pbDate: PbDate?) throws -> DateComponents {
+        guard let year = pbDate?.year,
+              let month = pbDate?.month,
+              let day = pbDate?.day else {
+            BleLogger.error("pbDateToDateComponents failed, pbDate is missing parameters")
+            throw PolarErrors.dateTimeFormatFailed(description: "pbDateToDateComponents failed, pbDate is missing parameters")
+        }
+
+        var dateComponents = DateComponents()
+        dateComponents.year = Int(year)
+        dateComponents.month = Int(month)
+        dateComponents.day = Int(day)
+        
+        return dateComponents
+    }
+    
+    static func pbTimeToDateComponents(pbTime: PbTime?) throws -> DateComponents {
+        guard let hour = pbTime?.hour,
+              let minute = pbTime?.minute,
+              let second = pbTime?.seconds else {
+            BleLogger.error("pbDateToDateComponents failed, pbTime is missing parameters")
+            throw PolarErrors.dateTimeFormatFailed(description: "pbDateToDateComponents failed, pbTime is missing parameters")
+        }
+
+        var dateComponents = DateComponents()
+        dateComponents.hour = Int(hour)
+        dateComponents.minute = Int(minute)
+        dateComponents.second = Int(second)
+
+        return dateComponents
+    }
 
     static func pbDateToUTCDate(pbDate: PbDate?) throws -> Date {
         guard let year = pbDate?.year,
