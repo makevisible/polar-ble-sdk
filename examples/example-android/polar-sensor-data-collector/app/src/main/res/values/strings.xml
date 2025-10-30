@@ -168,6 +168,7 @@
     <!-- Firmware update -->
     <string name="do_firmware_update">Do firmware update</string>
     <string name="do_firmware_update_custom_url">Custom URL</string>
+    <string name="loop_firmware_update">Loop firmware update</string>
     <string name="enter_firmware_url">Enter firmware URL</string>
     <string name="firmware_update">Firmware update</string>
     <string name="enter_the_url_for_firmware_update">Enter the URL for firmware update</string>

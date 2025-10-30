@@ -71,17 +71,17 @@ android {
     }
 
     signingConfigs {
-        release {
-            storeFile file(requireEnv("PSDC_ANDROID_KEYSTORE_PATH"))
-            storePassword requireEnv("PSDC_ANDROID_KEYSTORE_PASSWORD")
-            keyAlias (System.getenv("PSDC_ANDROID_KEY_ALIAS") ?: "release")
-            keyPassword requireEnv("PSDC_ANDROID_KEY_PASSWORD")
-        }
+        // release {
+        //     storeFile file(requireEnv("PSDC_ANDROID_KEYSTORE_PATH"))
+        //     storePassword requireEnv("PSDC_ANDROID_KEYSTORE_PASSWORD")
+        //     keyAlias (System.getenv("PSDC_ANDROID_KEY_ALIAS") ?: "release")
+        //     keyPassword requireEnv("PSDC_ANDROID_KEY_PASSWORD")
+        // }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
 
@@ -231,4 +231,4 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
-apply plugin: 'com.google.gms.google-services'
+// apply plugin: 'com.google.gms.google-services'

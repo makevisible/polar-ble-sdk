@@ -26,11 +26,16 @@ import com.polar.polarsensordatacollector.ui.utils.DialogUtility.showSensorSelec
 import com.polar.sdk.api.errors.PolarInvalidArgument
 import com.polar.sdk.api.model.PolarDeviceInfo
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 
 @AndroidEntryPoint
 class MainFragment : Fragment(R.layout.fragment_main) {
+    private lateinit var loopFirmwareUpdateButton: Button
+    private lateinit var firmwareUpdateStatusText: TextView
+    private var isLoopingFirmwareUpdate = false
     companion object {
         private const val TAG = "MainFragment"
         private const val CURRENT_FRAGMENT = "current_fragment"
@@ -64,6 +69,13 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     private lateinit var onlineOfflineAdapter: OnlineOfflineAdapter
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        loopFirmwareUpdateButton = view.findViewById(R.id.loop_firmware_update_button)
+        firmwareUpdateStatusText =
+            view.findViewById(R.id.firmware_version) // Or create a new TextView for status
+        loopFirmwareUpdateButton.setOnClickListener {
+            startLoopFirmwareUpdate()
+        }
+
         setupViews(view)
 
         savedInstanceState?.let {
@@ -124,6 +136,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                     },
                     viewModel.searchForDevice(searchText.text.toString())
                 )
+
                 MainViewModel.DeviceConnectionStates.CONNECTING_TO_SELECTED_DEVICE -> {
                     val connectingToDevice = "Connecting to device ${selectedDevice?.name}"
                     showToast(connectingToDevice)
@@ -152,6 +165,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                         polarInvalidArgument.printStackTrace()
                     }
                 }
+
                 MainViewModel.DeviceConnectionStates.DISCONNECTING_FROM_SELECTED_DEVICE -> {
                     val disconnectingFromDevice =
                         "Disconnecting from the device ${selectedDevice?.name}"
@@ -189,6 +203,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                         polarInvalidArgument.printStackTrace()
                     }
                 }
+
                 MainViewModel.DeviceConnectionStates.PHONE_BLE_OFF -> {
                     //NOP
                 }
@@ -213,7 +228,12 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                     viewPager.visibility = INVISIBLE
                     deviceConnectionStatusGroup.visibility = VISIBLE
                     phoneBleStatus.visibility = GONE
-                    connectButton.setBackgroundColor(resources.getColor(R.color.colorButtonConnecting, null))
+                    connectButton.setBackgroundColor(
+                        resources.getColor(
+                            R.color.colorButtonConnecting,
+                            null
+                        )
+                    )
                 } else {
                     val connectedDevice = connectedDevices.first()
                     Log.d(TAG, "Device changed to: $connectedDevice")
@@ -229,6 +249,46 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         batteryPresentStatus.setOnClickListener { this.hidePowerSourceState() }
         wirelessPowerSourceConnectedStatus.setOnClickListener { this.hidePowerSourceState() }
         wiredPowerSourceConnectedStatus.setOnClickListener { this.hidePowerSourceState() }
+    }
+
+    private fun startLoopFirmwareUpdate() {
+        if (isLoopingFirmwareUpdate) return
+        isLoopingFirmwareUpdate = true
+        loopFirmwareUpdate(
+            mapOf(
+                "2.0.8" to "https://firmware.cdn.polar.com/firmware/c1e6832c-2241-4536-b125-8dce41520919/firmware.zip", // 2.0.8
+                "1.2.11" to "https://firmware.cdn.polar.com/firmware/de7e3915-d53d-42ee-b2a1-be6794d383eb/firmware.zip", // 1.2.11
+            ),
+            0
+        )
+    }
+
+    private var firmwareUpdateJob: Job? = null
+    private fun loopFirmwareUpdate(urls: Map<String, String>, index: Int) {
+        Log.d(TAG, "[loopFirmwareUpdate] Looping firmware update: index = $index, isLoopingFirmwareUpdate = $isLoopingFirmwareUpdate")
+
+        val firmwareVersion = urls.keys.toList()[index % urls.size]
+        val firmwareUrl = urls.values.toList()[index % urls.size]
+        Log.d(TAG, "[loopFirmwareUpdate] Starting firmware update: $firmwareUrl")
+
+        loopFirmwareUpdateButton.text = "[$firmwareVersion]: Updating firmware: $firmwareVersion"
+
+        firmwareUpdateJob?.cancel()
+        firmwareUpdateJob = viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.doFirmwareUpdate(firmwareUrl)
+            // Wait for update to complete by observing status
+            // Skip initial value.
+            viewModel.uiFirmwareUpdateStatus.drop(1).collect { status ->
+                Log.d(TAG, "[loopFirmwareUpdate] Firmware update status: $status")
+                loopFirmwareUpdateButton.text = "[$firmwareVersion]: ${status.details}";
+                if (status is com.polar.sdk.api.model.FirmwareUpdateStatus.FwUpdateCompletedSuccessfully || status is com.polar.sdk.api.model.FirmwareUpdateStatus.FwUpdateFailed) {
+                    // Delay before next update (optional)
+                    kotlinx.coroutines.delay(5 * 60000) // 5 minutes
+                    loopFirmwareUpdate(urls, index + 1)
+                    return@collect
+                }
+            }
+        }
     }
 
     private fun setupViews(view: View) {

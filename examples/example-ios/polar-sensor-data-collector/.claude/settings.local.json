@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/korzonkiee/Projects/makevisible/update-to-6.9.0/sources/iOS/ios-communications/Sources/PolarBleSdk/sdk/impl/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

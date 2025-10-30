@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>APP_GIT_BRANCH</key>
-	<string>HEAD</string>
+	<string>update-to-6.9.0</string>
 	<key>APP_GIT_COMMIT</key>
-	<string>345b1a2</string>
+	<string>69634599</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>
@@ -23,9 +23,17 @@
 	<key>CFBundleVersion</key>
 	<string>1.36.0</string>
 	<key>GIT_APP_LOCALLY_MODIFIED</key>
-	<string>PSDC/Info.plist</string>
+	<string>examples/example-ios/polar-sensor-data-collector/PSDC.xcodeproj/project.pbxproj
+examples/example-ios/polar-sensor-data-collector/PSDC/Info.plist
+examples/example-ios/polar-sensor-data-collector/podfile
+sources/Android/android-communications/library/src/sdk/java/com/polar/sdk/impl/BDBleApiImpl.kt
+sources/iOS/ios-communications/Sources/PolarBleSdk/sdk/impl/PolarBleApiImpl.swift</string>
 	<key>GIT_SDK_LOCALLY_MODIFIED</key>
-	<string></string>
+	<string>examples/example-ios/polar-sensor-data-collector/PSDC.xcodeproj/project.pbxproj
+examples/example-ios/polar-sensor-data-collector/PSDC/Info.plist
+examples/example-ios/polar-sensor-data-collector/podfile
+sources/Android/android-communications/library/src/sdk/java/com/polar/sdk/impl/BDBleApiImpl.kt
+sources/iOS/ios-communications/Sources/PolarBleSdk/sdk/impl/PolarBleApiImpl.swift</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.healthcare-fitness</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -35,9 +43,9 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Allowing this gives you the access to the full set of Bluetooth features.</string>
 	<key>SDK_GIT_BRANCH</key>
-	<string>master</string>
+	<string>update-to-6.9.0</string>
 	<key>SDK_GIT_COMMIT</key>
-	<string>19861d3c</string>
+	<string>69634599</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

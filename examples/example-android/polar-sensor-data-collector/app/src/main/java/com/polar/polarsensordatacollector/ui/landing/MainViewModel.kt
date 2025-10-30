@@ -10,9 +10,12 @@ import com.polar.androidcommunications.api.ble.model.gatt.client.PowerSourcesSta
 import com.polar.polarsensordatacollector.model.Device
 import com.polar.polarsensordatacollector.repository.DeviceConnectionState
 import com.polar.polarsensordatacollector.repository.PolarDeviceRepository
+import com.polar.sdk.api.model.FirmwareUpdateStatus
 import com.polar.sdk.api.model.PolarDeviceInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Flowable
+import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,6 +69,9 @@ class MainViewModel @Inject constructor(
 
     private val _uiOfflineRecordingState = MutableStateFlow(OfflineRecordingAvailabilityUiState())
     val uiOfflineRecordingState: StateFlow<OfflineRecordingAvailabilityUiState> = _uiOfflineRecordingState.asStateFlow()
+
+    private val _uiFirmwareUpdateStatus = MutableStateFlow<FirmwareUpdateStatus>(FirmwareUpdateStatus.FwUpdateNotAvailable())
+    val uiFirmwareUpdateStatus: StateFlow<FirmwareUpdateStatus> = _uiFirmwareUpdateStatus.asStateFlow()
 
     enum class DeviceConnectionStates {
         PHONE_BLE_OFF, NOT_CONNECTED, CONNECTING_TO_SELECTED_DEVICE, CONNECTED, DISCONNECTING_FROM_SELECTED_DEVICE
@@ -156,6 +162,28 @@ class MainViewModel @Inject constructor(
 
     fun isBluetoothEnabled(): Boolean {
         return polarDeviceStreamingRepository.isPhoneBlePowerOn.value
+    }
+
+    fun doFirmwareUpdate(firmwareUrl: String = "") {
+        val deviceId = selectedDevice?.deviceId
+        if (deviceId.isNullOrEmpty()) {
+            Log.e(TAG, "doFirmwareUpdate called without a selected device")
+            return
+        }
+
+        viewModelScope.launch {
+            polarDeviceStreamingRepository.doFirmwareUpdate(deviceId, firmwareUrl)
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(
+                            { status ->
+                                _uiFirmwareUpdateStatus.value = status
+                            },
+                            { throwable ->
+                                _uiFirmwareUpdateStatus.value = FirmwareUpdateStatus.FwUpdateFailed("${throwable.message}")
+                            }
+                    )
+        }
     }
 
     private fun deviceDisconnected(deviceId: String) {
