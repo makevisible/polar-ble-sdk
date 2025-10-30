@@ -256,7 +256,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         isLoopingFirmwareUpdate = true
         loopFirmwareUpdate(
             mapOf(
-                "2.0.8" to "https://firmware.cdn.polar.com/firmware/c1e6832c-2241-4536-b125-8dce41520919/firmware.zip", // 2.0.8
+                "3.1.0" to "https://firmware.cdn.polar.com/firmware/e3bee3a8-fddb-4904-b230-e6ccfe4ad965/firmware.zip", // 3.1.0 (360)
                 "1.2.11" to "https://firmware.cdn.polar.com/firmware/de7e3915-d53d-42ee-b2a1-be6794d383eb/firmware.zip", // 1.2.11
             ),
             0
