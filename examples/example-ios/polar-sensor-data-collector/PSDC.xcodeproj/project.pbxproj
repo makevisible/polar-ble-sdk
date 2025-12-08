@@ -16,6 +16,8 @@
 		84698A132DB77937006AD8FA /* TrainingSessionEntriesRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84698A122DB77937006AD8FA /* TrainingSessionEntriesRow.swift */; };
 		84698A152DB77D39006AD8FA /* TrainingSessionEntries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84698A142DB77D39006AD8FA /* TrainingSessionEntries.swift */; };
 		84698A172DB77D8C006AD8FA /* TrainingSessionData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84698A162DB77D8C006AD8FA /* TrainingSessionData.swift */; };
+		849400072ECC96C10093A8C8 /* HrBroadcastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 849400062ECC96B50093A8C8 /* HrBroadcastView.swift */; };
+		84954BAD2E9E65C5000A5C0A /* DataLoadProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84954BAC2E9E65C2000A5C0A /* DataLoadProgressView.swift */; };
 		8499A2DC2E01576D006FD70A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8499A2DA2E01576D006FD70A /* Localizable.strings */; };
 		84B821432D6C908B005BB62C /* DateFolderDeletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B821422D6C908B005BB62C /* DateFolderDeletionView.swift */; };
 		84F0A1802CD0F76C009CF1A1 /* ActivityPhysicalDataConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F0A17F2CD0F76C009CF1A1 /* ActivityPhysicalDataConfig.swift */; };
@@ -24,6 +26,7 @@
 		84F749032C63559A00038A4B /* ActivityRecordingDetailsview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F749022C63559A00038A4B /* ActivityRecordingDetailsview.swift */; };
 		84F749052C6355C400038A4B /* ActivityRecordingData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F749042C6355C400038A4B /* ActivityRecordingData.swift */; };
 		9537D58B2CFF06E200B6A1E6 /* PolarBleDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9537D58A2CFF06D900B6A1E6 /* PolarBleDeviceManager.swift */; };
+		957CBBE72EC74182000E008B /* TextViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957CBBE62EC74182000E008B /* TextViewerView.swift */; };
 		95B4F1032CEB7A880010E2B6 /* CheckFirmwareUpdateFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B4F1022CEB7A7C0010E2B6 /* CheckFirmwareUpdateFeature.swift */; };
 		95BA028D2D64B1030037F44E /* FilePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95BA028C2D64B1030037F44E /* FilePicker.swift */; };
 		95EA2BA22D40E7B200657DE5 /* SleepRecordingFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95EA2BA12D40E7A800657DE5 /* SleepRecordingFeature.swift */; };
@@ -107,6 +110,8 @@
 		84698A122DB77937006AD8FA /* TrainingSessionEntriesRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSessionEntriesRow.swift; sourceTree = "<group>"; };
 		84698A142DB77D39006AD8FA /* TrainingSessionEntries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSessionEntries.swift; sourceTree = "<group>"; };
 		84698A162DB77D8C006AD8FA /* TrainingSessionData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingSessionData.swift; sourceTree = "<group>"; };
+		849400062ECC96B50093A8C8 /* HrBroadcastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HrBroadcastView.swift; sourceTree = "<group>"; };
+		84954BAC2E9E65C2000A5C0A /* DataLoadProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataLoadProgressView.swift; sourceTree = "<group>"; };
 		8499A2DB2E01576D006FD70A /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		84B821422D6C908B005BB62C /* DateFolderDeletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFolderDeletionView.swift; sourceTree = "<group>"; };
 		84F0A17F2CD0F76C009CF1A1 /* ActivityPhysicalDataConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityPhysicalDataConfig.swift; sourceTree = "<group>"; };
@@ -116,6 +121,7 @@
 		84F749042C6355C400038A4B /* ActivityRecordingData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityRecordingData.swift; sourceTree = "<group>"; };
 		9537D58A2CFF06D900B6A1E6 /* PolarBleDeviceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolarBleDeviceManager.swift; sourceTree = "<group>"; };
 		9559A5F72D267B960003DC6F /* SkinTemperatureRecordingFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinTemperatureRecordingFeature.swift; sourceTree = "<group>"; };
+		957CBBE62EC74182000E008B /* TextViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextViewerView.swift; sourceTree = "<group>"; };
 		95A381E52D27DEC9005DB1BA /* PSDC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PSDC.entitlements; sourceTree = "<group>"; };
 		95B4F1022CEB7A7C0010E2B6 /* CheckFirmwareUpdateFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckFirmwareUpdateFeature.swift; sourceTree = "<group>"; };
 		95BA028C2D64B1030037F44E /* FilePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePicker.swift; sourceTree = "<group>"; };
@@ -251,6 +257,14 @@
 			path = TrainingSession;
 			sourceTree = "<group>";
 		};
+		849400052ECC96990093A8C8 /* HrBroadcast */ = {
+			isa = PBXGroup;
+			children = (
+				849400062ECC96B50093A8C8 /* HrBroadcastView.swift */,
+			);
+			path = HrBroadcast;
+			sourceTree = "<group>";
+		};
 		84F0A17E2CD0F74C009CF1A1 /* PhysicalData */ = {
 			isa = PBXGroup;
 			children = (
@@ -323,6 +337,8 @@
 		AA74C2442BDA3D6D005E0908 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				849400052ECC96990093A8C8 /* HrBroadcast */,
+				84954BAC2E9E65C2000A5C0A /* DataLoadProgressView.swift */,
 				CC57B5DA2E60617000E90F5B /* ExerciseSession */,
 				84698A0D2DB778B2006AD8FA /* TrainingSession */,
 				84F0A17E2CD0F74C009CF1A1 /* PhysicalData */,
@@ -337,6 +353,7 @@
 				AA74C2202BDA377D005E0908 /* ContentView.swift */,
 				AA74C25B2BDA3F3E005E0908 /* UiHelper.swift */,
 				AA74C25F2BDA3FD5005E0908 /* SettingsView.swift */,
+				957CBBE62EC74182000E008B /* TextViewerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -514,9 +531,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-PSDC/Pods-PSDC-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-PSDC/Pods-PSDC-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -587,6 +608,7 @@
 				AA74C2232BDA39D6005E0908 /* PolarBleSdkManager.swift in Sources */,
 				AAA0FE092BEA3B42005368A7 /* PpiRecordingFeature.swift in Sources */,
 				84F749052C6355C400038A4B /* ActivityRecordingData.swift in Sources */,
+				84954BAD2E9E65C5000A5C0A /* DataLoadProgressView.swift in Sources */,
 				AA74C2402BDA3C8C005E0908 /* LedAnimationFeature.swift in Sources */,
 				AA74C25A2BDA3ED8005E0908 /* OfflineRecordingEntriesRow.swift in Sources */,
 				AAA0FE012BE9EF22005368A7 /* HrRecordingFeature.swift in Sources */,
@@ -599,9 +621,11 @@
 				84698A132DB77937006AD8FA /* TrainingSessionEntriesRow.swift in Sources */,
 				AA74C2682BDA7215005E0908 /* H10ExerciseView.swift in Sources */,
 				AAA0FE052BEA3769005368A7 /* AccRecordingFeature.swift in Sources */,
+				957CBBE72EC74182000E008B /* TextViewerView.swift in Sources */,
 				84698A172DB77D8C006AD8FA /* TrainingSessionData.swift in Sources */,
 				AA74C2562BDA3E9B005E0908 /* OfflineRecordingListView.swift in Sources */,
 				8415B05A2C2C38FB00AA4C9B /* FirmwareUpdateFeature.swift in Sources */,
+				849400072ECC96C10093A8C8 /* HrBroadcastView.swift in Sources */,
 				95EA2BA22D40E7B200657DE5 /* SleepRecordingFeature.swift in Sources */,
 				AABC2A402C85BABB00BFC6BD /* SDLogConfiguration.swift in Sources */,
 				AA74C2342BDA3C08005E0908 /* OnlineStreamingFeature.swift in Sources */,

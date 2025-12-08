@@ -38,9 +38,12 @@ import com.polar.sdk.api.model.sleep.PolarNightlyRechargeData
 import com.polar.sdk.api.model.PolarSkinTemperatureData
 import com.polar.sdk.api.model.activity.Polar247PPiSamplesData
 import com.polar.sdk.api.model.activity.PolarActiveTimeData
-import com.polar.sdk.api.model.trainingsession.PolarTrainingSession
 import com.polar.sdk.api.model.trainingsession.PolarTrainingSessionReference
 import com.polar.sdk.api.model.activity.PolarActivitySamplesDayData
+import com.polar.sdk.api.model.activity.PolarDailySummaryData
+import com.polar.sdk.api.model.trainingsession.PolarTrainingSessionFetchResult
+import io.reactivex.rxjava3.core.BackpressureStrategy
+import kotlinx.coroutines.rx3.asFlow
 import kotlinx.coroutines.rx3.awaitSingleOrNull
 import java.time.LocalDate
 import java.time.ZoneId
@@ -102,12 +105,22 @@ data class OfflineRecTriggerStatus(
 )
 
 sealed class ResultOfRequest<out T> {
-    data class Success<out R>(val value: R? = null) : ResultOfRequest<R>()
+    data class Success<out T>(
+        val value: T? = null,
+        val progress: ProgressInfo? = null
+    ) : ResultOfRequest<T>()
+
     data class Failure(
         val message: String,
         val throwable: Throwable?
     ) : ResultOfRequest<Nothing>()
 }
+
+data class ProgressInfo(
+    val bytesDownloaded: Long,
+    val totalBytes: Long,
+    val progressPercent: Int
+)
 
 @Singleton
 class PolarDeviceRepository @Inject constructor(
@@ -149,6 +162,9 @@ class PolarDeviceRepository @Inject constructor(
     private val _isMultiBleModeEnabled: MutableStateFlow<Boolean> = MutableStateFlow(false)
     var isMultiBleModeEnabled: StateFlow<Boolean> = _isMultiBleModeEnabled.asStateFlow()
 
+    private val _deviceSupportsSettings: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    var deviceSupportsSettings: StateFlow<Boolean> = _deviceSupportsSettings.asStateFlow()
+
     init {
         RxJavaPlugins.setErrorHandler { e ->
             if (e is UndeliverableException) {
@@ -176,33 +192,8 @@ class PolarDeviceRepository @Inject constructor(
             .asFlow()
     }
 
-    @OptIn(ExperimentalTime::class)
-    suspend fun getOfflineRecording(deviceId: String, path: String): ResultOfRequest<OfflineRecordingData> {
-        Log.d(TAG, "getOfflineRecording from device $deviceId in $path")
-        val offlineRecEntry = offlineEntryCache[deviceId]?.find { it.path == path }
-        offlineRecEntry?.let { offlineEntry ->
-            return try {
-                val result = measureTimedValue {
-                    val secret = security.getSecretKey(deviceId)?.let { PolarRecordingSecret(it.encoded) }
-                    return@measureTimedValue api.getOfflineRecord(deviceId, offlineEntry, secret)
-                        .await()
-                }
-
-                val uri = saveData(deviceId, result.value)
-                ResultOfRequest.Success(
-                    OfflineRecordingData(
-                        data = result.value,
-                        uri = uri,
-                        fileSize = offlineEntry.size,
-                        downLoadSpeed = ((offlineEntry.size / 1000.0) / result.duration.inWholeMicroseconds) * 1000 * 1000
-                    )
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Get offline recording fetch failed on entry $path error $e")
-                ResultOfRequest.Failure("Get offline recording fetch failed on entry $path", e)
-            }
-        }
-        return ResultOfRequest.Failure("Get offline recording fetch failed. Entry in path $path is not existing", null)
+    fun getOfflineEntryFromCache(deviceId: String, path: String): PolarOfflineRecordingEntry? {
+        return offlineEntryCache[deviceId]?.find { it.path == path }
     }
 
     @OptIn(ExperimentalTime::class)
@@ -221,6 +212,76 @@ class PolarDeviceRepository @Inject constructor(
             }
         }
         ResultOfRequest.Failure("Tried to remove \"$path\", but no matching entry in repository", null)
+    }
+
+    fun getOfflineRecordingWithProgress(
+        deviceId: String,
+        path: String
+    ): Flow<ResultOfRequest<OfflineRecordingData>> {
+        Log.d(TAG, "getOfflineRecordingWithProgress from device $deviceId in $path")
+
+        val offlineRecEntry = offlineEntryCache[deviceId]?.find { it.path == path }
+
+        return if (offlineRecEntry != null) {
+            flow<ResultOfRequest<OfflineRecordingData>> {
+                val startTime = System.currentTimeMillis()
+
+                api.getOfflineRecordWithProgress(
+                    deviceId,
+                    offlineRecEntry,
+                    security.getSecretKey(deviceId)?.let { PolarRecordingSecret(it.encoded) }
+                )
+                    .toFlowable(BackpressureStrategy.BUFFER)
+                    .asFlow()
+                    .collect { result ->
+                        when (result) {
+                            is PolarOfflineRecordingResult.Progress -> {
+                                Log.d(
+                                    TAG,
+                                    "Progress: ${result.progressPercent}% (${result.bytesDownloaded}/${result.totalBytes} bytes)"
+                                )
+                                emit(
+                                    ResultOfRequest.Success(
+                                        value = null,
+                                        progress = ProgressInfo(
+                                            bytesDownloaded = result.bytesDownloaded,
+                                            totalBytes = result.totalBytes,
+                                            progressPercent = result.progressPercent
+                                        )
+                                    )
+                                )
+                            }
+                            is PolarOfflineRecordingResult.Complete -> {
+                                val downloadDuration = (System.currentTimeMillis() - startTime) / 1024.0
+                                val downloadSpeed = if (downloadDuration > 0) {
+                                    (offlineRecEntry.size / 1024.0) / downloadDuration
+                                } else 0.0
+
+                                val uri = saveData(deviceId, result.data)
+
+                                emit(
+                                    ResultOfRequest.Success(
+                                        value = OfflineRecordingData(
+                                            data = result.data,
+                                            uri = uri,
+                                            fileSize = offlineRecEntry.size,
+                                            downLoadSpeed = downloadSpeed
+                                        ),
+                                        progress = null
+                                    )
+                                )
+                            }
+                        }
+                    }
+            }.catch { e ->
+                Log.e(TAG, "Get offline recording fetch failed on path $path error $e")
+                emit(ResultOfRequest.Failure("Get offline recording fetch failed on path $path", e))
+            }
+        } else {
+            flow {
+                emit(ResultOfRequest.Failure("Offline recording entry not found for path $path", null))
+            }
+        }
     }
 
     suspend fun setTime(deviceId: String, calendar: Calendar): ResultOfRequest<Nothing> = withContext(Dispatchers.IO) {
@@ -345,6 +406,9 @@ class PolarDeviceRepository @Inject constructor(
     override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
         Log.d(TAG, "device ${polarDeviceInfo.deviceId} connected")
         Completable.fromAction {
+            _deviceSupportsSettings.update {
+                polarDeviceInfo.hasSAGRFCFileSystem
+            }
             _deviceConnectionStatus.update {
                 DeviceConnectionState.DeviceConnected(
                     deviceId = polarDeviceInfo.deviceId
@@ -620,8 +684,8 @@ class PolarDeviceRepository @Inject constructor(
          return api.doRestart(deviceId)
     }
 
-    fun doFactoryReset(deviceId: String, savePairing: Boolean): Completable {
-        return api.doFactoryReset(deviceId, savePairing)
+    fun doFactoryReset(deviceId: String): Completable {
+        return api.doFactoryReset(deviceId)
     }
 
     fun setWarehouseSleep(deviceId: String): Completable {
@@ -997,6 +1061,19 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
+    suspend fun deleteTelemetryData(
+        deviceId: String,
+    ): ResultOfRequest<Nothing> = withContext(Dispatchers.IO) {
+        try {
+            api.deleteTelemetryData(deviceId)
+                .subscribeOn(Schedulers.io())
+                .await()
+            ResultOfRequest.Success()
+        } catch (e: Exception) {
+            ResultOfRequest.Failure("Failed to delete telemetry data files from device", e)
+        }
+    }
+
     suspend fun getSkinTemperatureData(
         deviceId: String,
         from: LocalDate,
@@ -1023,21 +1100,30 @@ class PolarDeviceRepository @Inject constructor(
             .asFlow()
     }
 
-    suspend fun getTrainingSession(deviceId: String, path: String): ResultOfRequest<PolarTrainingSession> {
-        Log.d(TAG, "getTrainingSession from device $deviceId in $path")
+    fun getTrainingSessionWithProgress(
+        deviceId: String,
+        path: String
+    ): Flow<ResultOfRequest<PolarTrainingSessionFetchResult>> {
+        Log.d(TAG, "getTrainingSessionWithProgress from device $deviceId in $path")
 
         val trainingSessionReference = trainingSessionReferenceCache[deviceId]?.find { it.path == path }
 
-        trainingSessionReference?.let { offlineEntry ->
-            return try {
-                    return ResultOfRequest.Success(api.getTrainingSession(deviceId, offlineEntry).await())
-            } catch (e: Exception) {
-                Log.e(TAG, "getTrainingSession failed on path $path error $e")
-                ResultOfRequest.Failure("getTrainingSession failed on path $path", e)
+        return if (trainingSessionReference != null) {
+            api.getTrainingSessionWithProgress(deviceId, trainingSessionReference)
+                .asFlow()
+                .map { result ->
+                    ResultOfRequest.Success(result) as ResultOfRequest<PolarTrainingSessionFetchResult>
+                }
+                .catch { e ->
+                    Log.e(TAG, "getTrainingSessionWithProgress failed on path $path error $e")
+                    emit(ResultOfRequest.Failure("getTrainingSessionWithProgress failed on path $path", e))
+                }
+        } else {
+            flow {
+                Log.e(TAG, "Training session reference not found for path $path")
+                emit(ResultOfRequest.Failure("Training session reference not found for path $path", null))
             }
         }
-
-        return ResultOfRequest.Failure("getTrainingSession failed on path $path", null)
     }
 
     suspend fun getActiveTimeData(
@@ -1084,6 +1170,15 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
+    suspend fun getDailySummaryData(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<PolarDailySummaryData>> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            var result = api.getDailySummaryData(deviceId, from, to).await()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
     private suspend fun getBleMultiConnectionMode(deviceId: String): Boolean {
 
         return try {
@@ -1098,5 +1193,62 @@ class PolarDeviceRepository @Inject constructor(
             Log.e(TAG, "getBleMultiConnectionMode failed. Error $e")
             return  false
         }
+    }
+
+    suspend fun setTelemetryEnabled(deviceId: String, enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            api.setTelemetryEnabled(deviceId, enabled).await()
+        }
+    }
+
+    suspend fun getUserDeviceSettings(deviceId: String): PolarUserDeviceSettings =
+        withContext(Dispatchers.IO) {
+            api.getUserDeviceSettings(identifier = deviceId).await()
+        }
+
+    suspend fun setUserDeviceLocation(deviceId: String, location: Int) =
+        withContext(Dispatchers.IO) {
+            api.setUserDeviceLocation(deviceId, location).await()
+        }
+
+    suspend fun setUsbConnectionMode(deviceId: String, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            api.setUsbConnectionMode(deviceId, enabled).await()
+        }
+
+    suspend fun setDaylightSavingTime(deviceId: String) =
+        withContext(Dispatchers.IO) {
+            api.setDaylightSavingTime(deviceId).await()
+        }
+
+    suspend fun setAutomaticTrainingDetectionSettings(
+        deviceId: String,
+        atdEnabled: Boolean,
+        sensitivity: Int,
+        minDuration: Int
+    ) = withContext(Dispatchers.IO) {
+        api.setAutomaticTrainingDetectionSettings(
+            identifier = deviceId,
+            automaticTrainingDetectionMode = atdEnabled,
+            automaticTrainingDetectionSensitivity = sensitivity,
+            minimumTrainingDurationSeconds = minDuration
+        ).await()
+    }
+
+    fun listenHrBroadcasts(excludeDeviceIds: Set<String>?): Flowable<PolarHrBroadcastData> {
+        return api.startListenForPolarHrBroadcasts(null)
+            .filter { hrData ->
+                excludeDeviceIds?.contains(hrData.polarDeviceInfo.deviceId) == false
+            }
+            .doOnNext { hrData ->
+                Log.d(TAG, "HR Broadcast received: Device: ${hrData.polarDeviceInfo.deviceId}, " +
+                        "HR: ${hrData.hr}")
+            }
+            .doOnError { error ->
+                Log.e(TAG, "HR Broadcast error: ${error.message}", error)
+            }
+            .doOnComplete {
+                Log.d(TAG, "HR Broadcast stream completed")
+            }
     }
 }

@@ -17,11 +17,13 @@ struct ContentView: View {
     @State private var selectedTab: SelectedAction = .online
     @State private var isSearchingDevices = false
     @State private var connectedDevicesText = ""
+    @State private var showHrBroadcastView = false
 
     @EnvironmentObject private var bleSdkManager: PolarBleSdkManager
     @EnvironmentObject private var bleDeviceManager: PolarBleDeviceManager
     @State private var appHeader: String = NSLocalizedString("APP_NAME", comment: "")
     @State private var localModifications: String = ""
+    @State private var presenting: Bool = false
     
     var body: some View {
         
@@ -96,6 +98,28 @@ struct ContentView: View {
                     .onTapGesture {
                         self.isSearchingDevices = !(self.isSearchingDevices)
                     }
+
+                if case .noDevice = bleSdkManager.deviceConnectionState {
+                    Button("Listen HR Broadcasts", action: {
+                        self.showHrBroadcastView = true
+                    })
+                    .buttonStyle(PrimaryButtonStyle(buttonState: getSearchButtonState()))
+                    .disabled(!bleSdkManager.isBluetoothOn)
+                    .sheet(isPresented: $showHrBroadcastView) {
+                        HrBroadcastView()
+                            .environmentObject(bleSdkManager)
+                    }
+                } else if case .disconnected = bleSdkManager.deviceConnectionState {
+                    Button("Listen HR Broadcasts", action: {
+                        self.showHrBroadcastView = true
+                    })
+                    .buttonStyle(PrimaryButtonStyle(buttonState: getSearchButtonState()))
+                    .disabled(!bleSdkManager.isBluetoothOn)
+                    .sheet(isPresented: $showHrBroadcastView) {
+                        HrBroadcastView()
+                            .environmentObject(bleSdkManager)
+                    }
+                }
                 
                 Text("\(bleSdkManager.connectedDevicesText)")
                 
@@ -107,7 +131,16 @@ struct ContentView: View {
                 
                 Picker("Choose operation", selection: $selectedTab) {
                     ForEach(SelectedAction.allCases, id: \.self) {
-                        Text($0.rawValue)
+                        let action = $0.rawValue
+                        if (action == "Online" || action == "Settings") {
+                            Text(action)
+                        } else if( (action == "Offline" && bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) ||
+                                    (action == "Logging" && bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) ||
+                                    (action == "Load" && bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) ||
+                                    (action == "H10 Exercise" && !bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem)
+                        ){
+                            Text(action)
+                        }
                     }
                 }.pickerStyle(SegmentedPickerStyle())
                     .padding(.horizontal)
@@ -126,10 +159,13 @@ struct ContentView: View {
             }.frame(maxWidth: .infinity)
             Spacer()
         }
-        .alert(item: $appState.bleSdkManager.generalMessage) { message in
-            Alert(
-                title: Text(message.text)
-            )
+        .alert("", isPresented: $presenting, actions: {
+            // do nothing
+        }, message: {
+            Text(appState.bleSdkManager.generalMessage?.text ?? "?")
+        })
+        .onChange(of: appState.bleSdkManager.generalMessage?.text) { text in
+           presenting = text != nil
         }
     }
     
@@ -222,20 +258,28 @@ struct OperationModesTabView: View {
                 OnlineStreamsView()
                     .environmentObject(bleSdkManager)
             case .offline:
-                OfflineRecordingView()
-                    .environmentObject(bleSdkManager)
+                if (bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) {
+                    OfflineRecordingView()
+                        .environmentObject(bleSdkManager)
+                }
             case .h10Exercise:
-                H10ExerciseView()
-                    .environmentObject(bleSdkManager)
+                if (!bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) {
+                    H10ExerciseView()
+                        .environmentObject(bleSdkManager)
+                }
             case .settings:
                 DeviceSettingsView()
                     .environmentObject(bleSdkManager)
             case .logging:
-                SensorDatalogSettingsView()
-                    .environmentObject(bleSdkManager)
+                if (bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) {
+                    SensorDatalogSettingsView()
+                        .environmentObject(bleSdkManager)
+                }
             case .activityRecordingView:
-                ActivityRecordingView()
-                    .environmentObject(bleSdkManager)
+                if (bleSdkManager.deviceConnectionState.get().hasSAGRFCFileSystem) {
+                    ActivityRecordingView()
+                        .environmentObject(bleSdkManager)
+                }
             }
         }
     }

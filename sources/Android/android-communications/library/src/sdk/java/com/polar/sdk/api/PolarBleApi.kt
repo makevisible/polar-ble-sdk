@@ -2,7 +2,6 @@
 package com.polar.sdk.api
 
 import androidx.annotation.IntRange
-import com.polar.androidcommunications.api.ble.model.gatt.client.psftp.BlePsFtpClient
 import com.polar.sdk.api.errors.PolarInvalidArgument
 import com.polar.sdk.api.model.*
 import fi.polar.remote.representation.protobuf.UserDeviceSettings.*
@@ -145,7 +144,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * The activity recording data types available in Polar devices.
      */
     enum class PolarActivityDataType {
-        SLEEP, STEPS, DISTANCE, CALORIES, HR_SAMPLES, NIGHTLY_RECHARGE, SKIN_TEMPERATURE, PPI_SAMPLES, ACTIVE_TIME, ACTIVITY_SAMPLES
+        SLEEP, STEPS, DISTANCE, CALORIES, HR_SAMPLES, NIGHTLY_RECHARGE, SKIN_TEMPERATURE, PPI_SAMPLES, ACTIVE_TIME, ACTIVITY_SAMPLES, DAILY_SUMMARY
     }
 
     /**
@@ -346,7 +345,16 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @param preservePairingInformation preserve pairing information during factory reset
      * @return [Completable] emitting success or error
      */
+    @Deprecated("Use method doFactoryReset(identifier: String) instead.")
     abstract fun doFactoryReset(identifier: String, preservePairingInformation: Boolean): Completable
+
+    /**
+     * Perform factory reset to given device.
+     *
+     * @param identifier Polar device ID or BT address
+     * @return [Completable] emitting success or error
+     */
+    abstract fun doFactoryReset(identifier: String): Completable
 
     /**
      * Perform restart device.
@@ -482,6 +490,15 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     ): Completable
 
     /**
+     * Set the next Daylight Saving Time (DST) settings on the device in the current timezone.
+     * Gets the current timezone from the device and sets DST value based on that.
+     *
+     * @param identifier Polar device ID or BT address.
+     * @return [Completable] emitting success or error.
+     */
+    abstract fun setDaylightSavingTime(identifier: String): Completable
+
+    /**
      * Delete data [PolarStoredDataType] from a device. Note that you will need to await for completion.
      *
      * @param identifier, Polar device ID or BT address
@@ -490,6 +507,15 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return [Flowable] success with the paths of the deleted data or error
      */
     abstract fun deleteStoredDeviceData(identifier: String, dataType: PolarStoredDataType, until: LocalDate?): Completable
+
+    /**
+     * Enable or disable telemetry (trace logging / diagnostics) on the device.
+     *
+     * @param identifier Polar device ID or BT address
+     * @param enabled true = telemetry on, false = off
+     * @return Completable (success or error)
+     */
+    abstract fun setTelemetryEnabled(deviceId: String, enabled: Boolean): Completable
 
     /**
      * Removes a single file or directory from the device.
@@ -510,6 +536,14 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return [Completable] emitting success or error
      */
     abstract fun deleteDeviceDateFolders(identifier: String, fromDate: LocalDate?, toDate: LocalDate?): Completable
+
+    /**
+     * Deletes all telemetry data files from a device
+     *
+     * @param identifier, Polar device ID or BT address
+     * @return [Completable] emitting success or error
+     */
+    abstract fun deleteTelemetryData(identifier: String): Completable
 
     /**
      * Waits for a connection to the specified device.

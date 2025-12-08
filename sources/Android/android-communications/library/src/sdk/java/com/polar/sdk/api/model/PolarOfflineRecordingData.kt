@@ -202,17 +202,44 @@ sealed class PolarOfflineRecordingData(val startTime: Calendar, val settings: Po
      */
     class SkinTemperatureOfflineRecording(val data: PolarTemperatureData, startTime: Calendar) :
         PolarOfflineRecordingData(startTime, null) {
-        internal fun appendTemperatureData(
-            existingTemperatureData: TemperatureOfflineRecording,
+        internal fun appendSkinTemperatureData(
+            existingSkinTemperatureData: SkinTemperatureOfflineRecording,
             newData: PolarTemperatureData
-        ): TemperatureOfflineRecording {
-            val mergedSamples = mutableListOf<PolarTemperatureData.PolarTemperatureDataSample>()
-            mergedSamples.addAll(existingTemperatureData.data.samples)
+        ): SkinTemperatureOfflineRecording {
+            val mergedSamples = mutableListOf<PolarTemperatureData. PolarTemperatureDataSample>()
+            mergedSamples.addAll(existingSkinTemperatureData. data.samples)
             mergedSamples.addAll(newData.samples)
-            return TemperatureOfflineRecording(
+            return SkinTemperatureOfflineRecording(
                 PolarTemperatureData(mergedSamples),
                 startTime
             )
         }
     }
+}
+
+/**
+ * Result wrapper for offline recording fetch operations with progress.
+ */
+sealed class PolarOfflineRecordingResult {
+    /**
+     * Progress update during download.
+     *
+     * @property bytesDownloaded Number of bytes downloaded so far
+     * @property totalBytes Total size of the recording in bytes
+     * @property progressPercent Progress as percentage (0-100)
+     */
+    data class Progress(
+        val bytesDownloaded: Long,
+        val totalBytes: Long,
+        val progressPercent: Int
+    ) : PolarOfflineRecordingResult()
+
+    /**
+     * Download completed successfully.
+     *
+     * @property data The downloaded offline recording data
+     */
+    data class Complete(
+        val data: PolarOfflineRecordingData
+    ) : PolarOfflineRecordingResult()
 }

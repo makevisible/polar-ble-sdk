@@ -6,13 +6,15 @@ import org.junit.Assert
 import org.junit.Rule
 import org.junit.Test
 import protocol.PftpRequest
-import java.time.LocalDateTime
 import fi.polar.remote.representation.protobuf.Types.PbDate
 import fi.polar.remote.representation.protobuf.Types.PbDuration
 import fi.polar.remote.representation.protobuf.Types.PbLocalDateTime
 import fi.polar.remote.representation.protobuf.Types.PbSystemDateTime
 import fi.polar.remote.representation.protobuf.Types.PbTime
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -660,20 +662,19 @@ internal class PolarTimeUtilsTest {
         //Act
         val calendar = PolarTimeUtils.pbLocalTimeToJavaCalendar(pbLocalTime)
 
-        val timeZone = TimeZone.getTimeZone("Europe/Helsinki")
-        calendar.timeZone = timeZone
+        val zoneId = ZoneId.of("Europe/Helsinki")
+        calendar.timeZone = TimeZone.getTimeZone(zoneId)
 
-        val result =
-            org.joda.time.LocalDateTime(calendar.timeInMillis, org.joda.time.DateTimeZone.forID("Europe/Helsinki"))
+        val result = LocalDateTime.ofInstant(Instant.ofEpochMilli(calendar.timeInMillis), zoneId)
 
         //Assert
         Assert.assertEquals(pbLocalYear, result.year)
-        Assert.assertEquals(pbLocalMonth, result.monthOfYear)
+        Assert.assertEquals(pbLocalMonth, result.monthValue)
         Assert.assertEquals(pbLocalDayOfMonth, result.dayOfMonth)
-        Assert.assertEquals(4, result.hourOfDay)
-        Assert.assertEquals(pbLocalMinute, result.minuteOfHour)
-        Assert.assertEquals(pbLocalSecond, result.secondOfMinute)
-        Assert.assertEquals(pbLocalMilliSecond, result.millisOfSecond)
+        Assert.assertEquals(4, result.hour)
+        Assert.assertEquals(pbLocalMinute, result.minute)
+        Assert.assertEquals(pbLocalSecond, result.second)
+        Assert.assertEquals(pbLocalMilliSecond, result.nano / 1_000_000)
     }
 
     @Test
@@ -779,5 +780,32 @@ internal class PolarTimeUtilsTest {
         val expectedMilliseconds = 0
 
         Assert.assertEquals(expectedMilliseconds, PolarTimeUtils.pbDurationToInt(pbDuration))
+    }
+
+    @Test
+    fun `test Java instant conversion to pbSystemTime`() {
+        //Arrange
+        val pbUtcYear = 2525
+        val pbUtcMonth = 1
+        val pbUtcDate = 1
+        val pbUtcHourOfDay = 10
+        val pbUtcMinute = 0
+        val pbUtcSecond = 0
+        val pbUtcMilliSecond = 0
+
+        var instant = Instant.parse("2525-01-01T10:00:00Z")
+
+        //Act
+        val result = PolarTimeUtils.javaInstantToPbPftpSetSystemTime(instant)
+
+        //Assert
+        Assert.assertEquals(pbUtcYear, result.date.year)
+        Assert.assertEquals(pbUtcMonth, result.date.month)
+        Assert.assertEquals(pbUtcDate, result.date.day)
+        Assert.assertEquals(pbUtcHourOfDay, result.time.hour)
+        Assert.assertEquals(pbUtcMinute, result.time.minute)
+        Assert.assertEquals(pbUtcSecond, result.time.seconds)
+        Assert.assertEquals(pbUtcMilliSecond, result.time.millis)
+        Assert.assertTrue(result.trusted)
     }
 }

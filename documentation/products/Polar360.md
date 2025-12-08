@@ -2,8 +2,8 @@
 
 # Polar 360 & Polar Loop
 
-- [Polar 360 & Polar Loop](#polar-360)
-  - [Polar 360 and Polar Loop features available by the SDK](#polar-360-and-polar-loop-features-available-by-the-sdk)
+- [Polar 360 \& Polar Loop](#polar-360--polar-loop)
+  - [Polar 360 and Polar loop features available by the SDK](#polar-360-and-polar-loop-features-available-by-the-sdk)
     - [Online streaming and offline recording](#online-streaming-and-offline-recording)
     - [Data export](#data-export)
     - [Device management](#device-management)
@@ -42,16 +42,17 @@ POLAR Loop is a screen-free wearable that automatically tracks daily activity, t
 * Sleep data [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarSleepApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarSleepApi.html)
 * Training sessions [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarTrainingSessionApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarTrainingSessionApi.html)
 * Activity data [iOS](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-ios/Protocols/PolarActivityApi.html), [Android](https://polarofficial.github.io/polar-ble-sdk/polar-sdk-android/com/polar/sdk/api/PolarActivityApi.html)
-  * Steps
-  * Active time
-  * Calory data (activity/training/BMR)
-  * 24/7 HR samples
-  * Nightly recharge data
-  * Skin temperature data
-  * 24/7 PPi samples
-  * Activity sample data
+  * Steps count accumulated per day (getSteps)
+  * Active time per day (getActiveTime)
+  * Calory data: activity/training/BMR (getCalories)
+  * 24/7 HR samples as 5 min averages when low or moderate activity and with 60 samples/minute when high activity is detected (get247HrSamples)
+  * 24/7 PPi samples in milliseconds (get247PPiSamples)
+  * 24/7 Skin temperature data with 5 min interval (getSkinTemperature)
+  * Nightly recharge data per night (getNightlyRecharge)
+  * Activity sample data (getActivitySampleData) including
       * step count with one minute interval (1440 samples per day)
       * MET samples with 30 sec interval (2880 samples per day)
+        * MET samples are calculated using ACC data and HR data if available. [White paper](https://www.polar.com/sites/default/files/static/science/white-papers/polar-smart-calories-white-paper.pdf)
       * Activity levels
 
 ### Device management
@@ -157,7 +158,7 @@ Activity and sleep data is passively recorded by the device overtime and will st
 | Data             |Operation mode     | Sampling Rate                         | Range (+-)                                           | Resolution |
 |:----------------:|:-----------------:|:-------------------------------------:|:----------------------------------------------------:|:----------:|
 | Acc              | Online streaming  | 12Hz, 25Hz, **50Hz**, 100Hz, 200Hz, 400Hz | 2g, 4g, **8g**, 16g                                      |16          |
-| Acc              | Offline recording | 12Hz, 26Hz, **52Hz**                      | 2g, 4g, **8g**, 16g                                      |16          |
+| Acc              | Offline recording | 12Hz, 25Hz, **50Hz**                      | 2g, 4g, **8g**, 16g                                      |16          |
 | PPG              | Online streaming  | **22Hz**, 50Hz, [1] 100Hz                 | -                                                        |24          |
 | PPG              | Offline recording | **22Hz**, 50Hz, [1] 100Hz                 | -                                                        |24          |
 | Skin temperature | Online streaming  | **1Hz**, 2Hz, 4Hz                         | -                                                    |32          |

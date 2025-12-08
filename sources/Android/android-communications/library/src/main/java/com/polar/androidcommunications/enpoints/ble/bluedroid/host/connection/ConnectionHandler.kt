@@ -11,7 +11,6 @@ import io.reactivex.rxjava3.core.Scheduler
 import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.schedulers.Schedulers
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Connection handler handles connection states serialization, by using simple state pattern
@@ -74,6 +73,7 @@ class ConnectionHandler(
     private var phySafeGuardDisposable: Disposable? = null
     private var mtuSafeGuardDisposable: Disposable? = null
     private var firstAttributeOperationDisposable: Disposable? = null
+    private var mutex = Object()
 
     fun setAutomaticReconnection(automaticReconnection: Boolean) {
         this.automaticReconnection = automaticReconnection
@@ -130,25 +130,17 @@ class ConnectionHandler(
         commandState(bleDeviceSession, ConnectionHandlerAction.DEVICE_DISCONNECTED)
     }
 
-    private val commandStateLock = ReentrantLock()
     private fun commandState(bleDeviceSession: BDDeviceSessionImpl, action: ConnectionHandlerAction) {
-        val threadName = Thread.currentThread().name
-        BleLogger.d(TAG, "commandState: thread $threadName trying to acquire lock")
-        commandStateLock.lock()
-        try {
-            BleLogger.d(TAG, "commandState: lock acquired by $threadName")
+        synchronized(mutex) {
             when (state) {
                 ConnectionHandlerState.FREE -> {
                     free(bleDeviceSession, action)
                 }
                 ConnectionHandlerState.CONNECTING -> {
-                    BleLogger.d(TAG, "commandState: state: $state action: $action")
+                    BleLogger.d(TAG, "state: $state action: $action")
                     connecting(bleDeviceSession, action)
                 }
             }
-        } finally {
-            commandStateLock.unlock()
-            BleLogger.d(TAG, "commandState: lock released by $threadName")
         }
     }
 
@@ -299,10 +291,8 @@ class ConnectionHandler(
 
             ConnectionHandlerAction.DISCONNECT_DEVICE -> {
                 if (session != current) {
-                    BleLogger.d(TAG, "disconnectDevice: session != current")
                     handleDisconnectDevice(session)
                 } else {
-                    BleLogger.d(TAG, "disconnectDevice: session == current")
                     // cancel pending connection
                     connectionInterface.cancelDeviceConnection(session)
                     observer.deviceConnectionCancelled(session)

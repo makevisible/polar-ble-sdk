@@ -38,3 +38,9 @@ DerivedData/
 ### CocoaPods ###
 Podfile.lock
 /Pods/
+
+## Private keys for TestFlight
+private_keys/
+
+## latest_release.json for Artifactory
+latest_release.json
