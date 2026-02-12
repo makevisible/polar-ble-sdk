@@ -397,7 +397,10 @@ public abstract class BleGattBase {
                             synchronized (integer) {
                                 integer.wait();
                             }
-                            if (integer.get() != ATT_SUCCESS && !emitter.isDisposed()) {
+                            if (emitter.isDisposed()) {
+                                return;
+                            }
+                            if (integer.get() != ATT_SUCCESS) {
                                 if (integer.get() != -1) {
                                     throw new BleAttributeError("Failed to set characteristic notification or indication ", integer.get());
                                 } else {
@@ -410,6 +413,9 @@ public abstract class BleGattBase {
                         throw new BleCharacteristicNotFound();
                     }
                 } else {
+                    if (emitter.isDisposed()) {
+                        return;
+                    }
                     throw new BleDisconnected();
                 }
             } catch (Exception ex) {
