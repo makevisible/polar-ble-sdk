@@ -116,7 +116,7 @@ class DataCollector(private val context: Context) {
         }
 
         override fun getUri(): Uri {
-            return FileProvider.getUriForFile(context, "com.polar.polarsensordatacollector.fileprovider", file)
+            return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }
 
         override fun delete(): Boolean {

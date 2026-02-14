@@ -66,6 +66,14 @@ android {
         }
     }
 
+    // Flavor for the Visible bundle id and app name.
+    productFlavors {
+        visible {
+            applicationId "com.makevisible.psdc"
+            resValue "string", "app_name", "PSDC Visible"
+        }
+    }
+
     buildFeatures {
         buildConfig = true
     }
@@ -91,6 +99,12 @@ android {
                 groups = "psdc-internal-testing"
                 // releaseNotesFile = "release-notes.txt"
             }
+        }
+    }
+
+    productFlavors.all { flavor ->
+        if (flavor.name == 'visible') {
+            flavor.signingConfig = signingConfigs.debug
         }
     }
 
