@@ -312,6 +312,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                 if (selectedDeviceSupportsSettings == true) {
                     onlineOfflineAdapter.addLoggingFragment(deviceId)
                     onlineOfflineAdapter.addActivityFragment(deviceId)
+                    onlineOfflineAdapter.addOhrAutomationFragment(deviceId)
                 }
                 if (selectedDevice?.name?.contains("H10") == true) {
                     onlineOfflineAdapter.addH10ExerciseFragment(deviceId)

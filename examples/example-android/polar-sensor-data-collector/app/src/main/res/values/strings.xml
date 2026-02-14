@@ -304,4 +304,23 @@
     <string name="start_listening">Start listening</string>
     <string name="hr_value">Hr: %1$s bpm</string>
     <string name="close">CLOSE</string>
+
+    <!-- OHR Automation -->
+    <string name="ohr_auto_wait_duration">Wait:</string>
+    <string name="ohr_auto_hours">h</string>
+    <string name="ohr_auto_minutes">m</string>
+    <string name="ohr_auto_start">Start OHR Automation</string>
+    <string name="ohr_auto_stop">Stop</string>
+    <string name="ohr_auto_stop_and_fetch">Stop &amp; Fetch Files</string>
+    <string name="ohr_auto_status_idle">Ready to start</string>
+    <string name="ohr_auto_status_enabling">Enabling OHR logging…</string>
+    <string name="ohr_auto_status_waiting">Waiting…</string>
+    <string name="ohr_auto_status_disabling">Disabling OHR logging…</string>
+    <string name="ohr_auto_status_listing">Listing files on band…</string>
+    <string name="ohr_auto_status_downloading">Downloading %1$s…</string>
+    <string name="ohr_auto_status_cleaning">Cleaning up…</string>
+    <string name="ohr_auto_status_saving">Saving files…</string>
+    <string name="ohr_auto_status_cycle_complete">Cycle complete, restarting…</string>
+    <string name="ohr_auto_status_error">Error: %1$s</string>
+    <string name="ohr_auto_cycles_completed">Cycles completed: %1$d</string>
 </resources>

@@ -8,6 +8,7 @@ import com.polar.polarsensordatacollector.ui.activity.ActivityRecordingFragment
 import com.polar.polarsensordatacollector.ui.devicesettings.DeviceSettingsFragment
 import com.polar.polarsensordatacollector.ui.h10exercise.H10ExerciseFragment
 import com.polar.polarsensordatacollector.ui.logging.LoggingFragment
+import com.polar.polarsensordatacollector.ui.ohrautomation.OhrAutomationFragment
 
 const val ONLINE_OFFLINE_KEY_DEVICE_ID = "com.polar.polarsensordatacollector.ONLINE_OFFLINE_KEY_DEVICE_ID"
 private const val TAG = "OnlineOfflineAdapter"
@@ -126,6 +127,28 @@ class OnlineOfflineAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) 
         }
     }
 
+    fun addOhrAutomationFragment(deviceId: String) {
+        if (!items.any { it.second is OhrAutomationFragment }) {
+            Log.d(TAG, "Add OhrAutomationFragment")
+            val fragment = OhrAutomationFragment()
+            fragment.arguments = Bundle().apply {
+                putString(ONLINE_OFFLINE_KEY_DEVICE_ID, deviceId)
+            }
+            items.add(Pair("OHR AUTO", fragment))
+            this.notifyItemInserted(items.size - 1)
+        } else {
+            Log.w(TAG, "trying to add OhrAutomationFragment but found already")
+        }
+    }
+
+    private fun removeOhrAutomationFragment() {
+        val index = items.indexOfFirst { it.second is OhrAutomationFragment }
+        if (index > -1) {
+            items.removeAt(index)
+            this.notifyItemRemoved(index)
+        }
+    }
+
     private fun removeOfflineRecordingFragment() {
         val index = items.indexOfFirst { it.second is OfflineRecFragment }
         if (index > -1) {
@@ -175,5 +198,6 @@ class OnlineOfflineAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) 
         }
         removeLoggingFragment()
         removeActivityFragment()
+        removeOhrAutomationFragment()
     }
 }

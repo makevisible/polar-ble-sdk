@@ -1161,6 +1161,28 @@ class PolarDeviceRepository @Inject constructor(
         return api.waitForConnection(deviceId)
     }
 
+    fun dumpAllFiles(deviceId: String): Flow<Pair<String, Long>> {
+        return api.dumpAllFiles(deviceId).asFlow()
+    }
+
+    suspend fun getFile(deviceId: String, path: String): ResultOfRequest<ByteArray> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val result = api.getFile(deviceId, path).await()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure("Failed to get file $path", e)
+        }
+    }
+
+    suspend fun removeSingleFile(deviceId: String, filePath: String): ResultOfRequest<Nothing> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            api.removeSingleFile(deviceId, filePath).await()
+            ResultOfRequest.Success()
+        } catch (e: Exception) {
+            ResultOfRequest.Failure("Failed to remove file $filePath", e)
+        }
+    }
+
     suspend fun getDiskSpace(
         deviceId: String
     ): ResultOfRequest<PolarDiskSpaceData> = withContext(Dispatchers.IO) {
