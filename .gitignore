@@ -6,3 +6,6 @@
 Packages/
 .swiftpm
 Package.resolved
+.gradle/
+.idea/
+build/
