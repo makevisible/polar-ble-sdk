@@ -9,3 +9,5 @@ Package.resolved
 .gradle/
 .idea/
 build/
+examples/example-android/polar-sensor-data-collector/app/release/
+local.properties
