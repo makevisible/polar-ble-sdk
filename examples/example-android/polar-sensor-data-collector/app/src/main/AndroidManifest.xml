@@ -49,6 +49,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Keep CPU awake for long-running automation -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".PsdcApp"
@@ -100,5 +103,11 @@
             android:name=".service.OnlineStreamService"
             android:enabled="true"
             android:exported="false" />
+
+        <service
+            android:name=".service.OhrAutomationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>

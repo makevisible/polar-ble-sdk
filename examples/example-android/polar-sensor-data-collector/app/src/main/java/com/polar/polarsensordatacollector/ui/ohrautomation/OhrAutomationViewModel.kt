@@ -2,27 +2,28 @@ package com.polar.polarsensordatacollector.ui.ohrautomation
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.CountDownTimer
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polar.polarsensordatacollector.repository.PolarDeviceRepository
 import com.polar.polarsensordatacollector.repository.ResultOfRequest
+import com.polar.polarsensordatacollector.service.OhrAutomationService
 import com.polar.polarsensordatacollector.ui.landing.ONLINE_OFFLINE_KEY_DEVICE_ID
 import com.polar.sdk.api.model.LogConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -86,8 +87,6 @@ class OhrAutomationViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AutomationUiState())
     val uiState: StateFlow<AutomationUiState> = _uiState.asStateFlow()
 
-    private var countDownTimer: CountDownTimer? = null
-    private var waitDeferred: CompletableDeferred<Unit>? = null
     private var activeJob: Job? = null
     private var stopRequested = false
     private var currentWaitDurationMs = 0L
@@ -116,7 +115,7 @@ class OhrAutomationViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
+        activeJob = viewModelScope.launch {
             addLog("🔍 Detected previous session, checking device state...")
 
             val logConfig = when (val result = repository.getLogConfig(deviceId)) {
@@ -125,6 +124,7 @@ class OhrAutomationViewModel @Inject constructor(
                     addLog("⚠️ Could not read log config: ${result.message}")
                     addLog("   Cannot resume — starting fresh when ready")
                     clearPersistedState()
+                    stopService()
                     return@launch
                 }
             }
@@ -132,6 +132,7 @@ class OhrAutomationViewModel @Inject constructor(
             if (logConfig?.ohrLogEnabled != true) {
                 addLog("ℹ️ OHR logging is no longer active on device. Previous session ended.")
                 clearPersistedState()
+                stopService()
                 return@launch
             }
 
@@ -140,6 +141,7 @@ class OhrAutomationViewModel @Inject constructor(
 
             stopRequested = false
             currentWaitDurationMs = waitDurationMs
+            startService()
             _uiState.update {
                 it.copy(
                     isRunning = true,
@@ -174,6 +176,7 @@ class OhrAutomationViewModel @Inject constructor(
         }
         stopRequested = false
         currentWaitDurationMs = totalMs
+        startService()
         _uiState.update {
             it.copy(
                 isRunning = true,
@@ -189,13 +192,10 @@ class OhrAutomationViewModel @Inject constructor(
 
     fun stop() {
         stopRequested = true
-        countDownTimer?.cancel()
-        countDownTimer = null
-        waitDeferred?.cancel()
-        waitDeferred = null
         activeJob?.cancel()
         activeJob = null
         clearPersistedState()
+        stopService()
         addLog("🛑 Automation stopped by user")
         _uiState.update {
             it.copy(
@@ -212,10 +212,6 @@ class OhrAutomationViewModel @Inject constructor(
      */
     fun stopAndFetch() {
         stopRequested = true
-        countDownTimer?.cancel()
-        countDownTimer = null
-        waitDeferred?.cancel()
-        waitDeferred = null
         activeJob?.cancel()
         activeJob = null
         clearPersistedState()
@@ -379,6 +375,7 @@ class OhrAutomationViewModel @Inject constructor(
                 // Final cycle — go to IDLE
                 val newCycleCount = _uiState.value.cycleCount + 1
                 addLog("✅ Final fetch cycle complete (total cycles: $newCycleCount)")
+                stopService()
                 _uiState.update {
                     it.copy(
                         phase = AutomationPhase.IDLE,
@@ -412,32 +409,24 @@ class OhrAutomationViewModel @Inject constructor(
         }
     }
 
-    // --- Internals ---
+    // --- Coroutine-based timer (survives screen-off with WakeLock) ---
 
+    /**
+     * Suspends for [durationMs], updating the UI every second.
+     * Uses coroutine [delay] instead of CountDownTimer, so it works
+     * reliably when the screen is off (as long as the foreground service
+     * holds a WakeLock).
+     */
     private suspend fun waitForDuration(durationMs: Long) {
-        val completable = CompletableDeferred<Unit>()
-        waitDeferred = completable
-
-        withContext(Dispatchers.Main) {
-            countDownTimer?.cancel()
-            countDownTimer = object : CountDownTimer(durationMs, 1000L) {
-                override fun onTick(millisUntilFinished: Long) {
-                    _uiState.update {
-                        it.copy(remainingTimeMs = millisUntilFinished)
-                    }
-                }
-
-                override fun onFinish() {
-                    _uiState.update {
-                        it.copy(remainingTimeMs = 0L)
-                    }
-                    completable.complete(Unit)
-                }
-            }.start()
+        val endTime = System.currentTimeMillis() + durationMs
+        while (true) {
+            val remaining = endTime - System.currentTimeMillis()
+            if (remaining <= 0) break
+            _uiState.update { it.copy(remainingTimeMs = remaining) }
+            // Sleep for 1 second or whatever is remaining, whichever is shorter
+            delay(minOf(1000L, remaining))
         }
-
-        completable.await()
-        waitDeferred = null
+        _uiState.update { it.copy(remainingTimeMs = 0L) }
     }
 
     private suspend fun saveFilesToStorage() {
@@ -456,6 +445,24 @@ class OhrAutomationViewModel @Inject constructor(
                     addLog("   ⚠️ Failed to save $fileName: ${e.message}")
                 }
             }
+        }
+    }
+
+    // --- Service helpers ---
+
+    private fun startService() {
+        try {
+            OhrAutomationService.startService(appContext)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start foreground service: ${e.message}")
+        }
+    }
+
+    private fun stopService() {
+        try {
+            OhrAutomationService.stopService(appContext)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not stop foreground service: ${e.message}")
         }
     }
 
@@ -495,6 +502,7 @@ class OhrAutomationViewModel @Inject constructor(
         Log.e(TAG, message)
         addLog("❌ $message")
         clearPersistedState()
+        stopService()
         _uiState.update {
             it.copy(
                 phase = AutomationPhase.ERROR,
@@ -521,6 +529,6 @@ class OhrAutomationViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        countDownTimer?.cancel()
+        activeJob?.cancel()
     }
 }
