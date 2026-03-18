@@ -5,6 +5,7 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import android.util.Log
+import com.polar.polarsensordatacollector.utils.FileLoggingTree
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
@@ -19,6 +20,7 @@ class PsdcApp : Application() {
     }
 
     override fun onCreate() {
+        FileLoggingTree.start(this)
         if (STRICT_MODE_ENABLED) {
             StrictMode.setThreadPolicy(
                 ThreadPolicy.Builder()

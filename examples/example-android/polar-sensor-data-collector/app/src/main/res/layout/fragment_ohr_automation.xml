@@ -75,6 +75,15 @@
             android:text="@string/ohr_auto_stop_and_fetch"
             android:textAppearance="?attr/textAppearanceSubtitle1"
             android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/skip_wait_button"
+            style="@style/Widget.App.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:text="@string/ohr_auto_skip_wait"
+            android:textAppearance="?attr/textAppearanceSubtitle1"
+            android:layout_weight="1" />
         </LinearLayout>
 
         <!-- Status -->

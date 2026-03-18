@@ -311,7 +311,8 @@
     <string name="ohr_auto_minutes">m</string>
     <string name="ohr_auto_start">Start OHR Automation</string>
     <string name="ohr_auto_stop">Stop</string>
-    <string name="ohr_auto_stop_and_fetch">Stop &amp; Fetch Files</string>
+    <string name="ohr_auto_stop_and_fetch">Stop &amp; Fetch</string>
+    <string name="ohr_auto_skip_wait">Stop &amp; Continue</string>
     <string name="ohr_auto_status_idle">Ready to start</string>
     <string name="ohr_auto_status_enabling">Enabling OHR logging…</string>
     <string name="ohr_auto_status_waiting">Waiting…</string>

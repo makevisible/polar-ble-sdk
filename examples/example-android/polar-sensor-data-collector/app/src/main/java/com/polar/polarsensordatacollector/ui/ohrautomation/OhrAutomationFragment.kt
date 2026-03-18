@@ -23,6 +23,7 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
     private lateinit var minutesPicker: NumberPicker
     private lateinit var startStopButton: Button
     private lateinit var stopAndFetchButton: Button
+    private lateinit var skipWaitButton: Button
     private lateinit var statusText: TextView
     private lateinit var countdownText: TextView
     private lateinit var cycleCountText: TextView
@@ -31,6 +32,12 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
     private lateinit var durationPickerGroup: View
 
     private val viewModel: OhrAutomationViewModel by viewModels()
+
+    /**
+     * Track whether the user has manually scrolled away from the bottom.
+     * When true, we don't auto-scroll on log updates.
+     */
+    private var userScrolledUp = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -55,6 +62,19 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
         stopAndFetchButton.setOnClickListener {
             viewModel.stopAndFetch()
         }
+
+        skipWaitButton.setOnClickListener {
+            viewModel.skipWait()
+        }
+
+        // Track user scroll – detect when user scrolls up
+        logScrollView.setOnScrollChangeListener { v, _, scrollY, _, _ ->
+            val sv = v as ScrollView
+            val child = sv.getChildAt(0) ?: return@setOnScrollChangeListener
+            val maxScroll = child.measuredHeight - sv.measuredHeight
+            // Consider "at bottom" if within 50px of the bottom
+            userScrolledUp = scrollY < (maxScroll - 50)
+        }
     }
 
     private fun setupViews(view: View) {
@@ -62,6 +82,7 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
         minutesPicker = view.findViewById(R.id.minutes_picker)
         startStopButton = view.findViewById(R.id.start_stop_button)
         stopAndFetchButton = view.findViewById(R.id.stop_and_fetch_button)
+        skipWaitButton = view.findViewById(R.id.skip_wait_button)
         statusText = view.findViewById(R.id.status_text)
         countdownText = view.findViewById(R.id.countdown_text)
         cycleCountText = view.findViewById(R.id.cycle_count_text)
@@ -91,6 +112,10 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
 
         // Stop & Fetch button visibility (only while running)
         stopAndFetchButton.visibility = if (state.isRunning) View.VISIBLE else View.GONE
+
+        // Skip Wait button (only during WAITING phase)
+        skipWaitButton.visibility =
+            if (state.isRunning && state.phase == AutomationPhase.WAITING) View.VISIBLE else View.GONE
 
         // Status text
         statusText.text = when (state.phase) {
@@ -122,10 +147,12 @@ class OhrAutomationFragment : Fragment(R.layout.fragment_ohr_automation) {
             cycleCountText.visibility = View.GONE
         }
 
-        // Log
+        // Log — only auto-scroll if user hasn't scrolled away from bottom
         logText.text = state.logLines.joinToString("\n")
-        logScrollView.post {
-            logScrollView.fullScroll(View.FOCUS_DOWN)
+        if (!userScrolledUp) {
+            logScrollView.post {
+                logScrollView.fullScroll(View.FOCUS_DOWN)
+            }
         }
     }
 
