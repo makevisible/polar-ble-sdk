@@ -334,14 +334,13 @@ import UIKit
     }
 
     func fetchSession(_ identifier: String) throws -> BleDeviceSession? {
-        if identifier.matches("^([0-9a-fA-F]{8})(-[0-9a-fA-F]{4}){3}-([0-9a-fA-F]{12})") {
-            return sessionByDeviceAddress(identifier)
-        } else if identifier.matches("([0-9a-fA-F]){6,8}") {
-            return sessionByDeviceId(identifier)
-        }
-        return Single.just(PolarServiceClientUtils.psFtpNotificationsEnabled(session) ? FeatureState.ready : FeatureState.notReady)
+        return try serviceClientUtils.fetchSession(identifier)
     }
-    
+
+    func sessionPmdClientReady(_ identifier: String) throws -> BleDeviceSession {
+        return try serviceClientUtils.sessionPmdClientReady(identifier)
+    }
+
     private func isFtpReady(_ session: BleDeviceSession) -> Single<FeatureState> {
         guard session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient != nil else {
             return Single.just(FeatureState.notAvailable)
@@ -2803,11 +2802,11 @@ extension PolarBleApiImpl: PolarBleApi  {
   
     func dumpAllFiles(_ identifier: String) -> Observable<(name: String, size:UInt64)> {
         do {
-            let session = try sessionFtpClientReady(identifier)
+            let session = try serviceClientUtils.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.error(PolarErrors.serviceNotFound)
             }
-          
+
             return fetchRecursive("/", client: client, condition: { (entry) -> Bool in true })
         } catch let err {
             return Observable.error(err)
@@ -4599,7 +4598,24 @@ extension PolarBleApiImpl: PolarBleApi  {
             return Single.error(PolarErrors.deviceError(description: "Failed to remove file \(filePath) path."))
         }
     }
-    
+
+    func getFile(identifier: String, filePath: String) -> Observable<NSData> {
+        BleLogger.trace("Getting file \(filePath) from device \(identifier).")
+        do {
+            let session = try serviceClientUtils.sessionFtpClientReady(identifier)
+            guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+                return Observable.error(PolarErrors.serviceNotFound)
+            }
+            var operation = Protocol_PbPFtpOperation()
+            operation.command = Protocol_PbPFtpOperation.Command.get
+            operation.path = filePath
+            let request = try operation.serializedData()
+            return client.request(request).asObservable()
+        } catch {
+            return Observable.error(PolarErrors.deviceError(description: "Failed to get file \(filePath)."))
+        }
+    }
+
     private func dateFromStringWOTime(dateFrom: String) -> Date {
         
         let year = Int(String(dateFrom[dateFrom.index(dateFrom.startIndex, offsetBy: 0)..<dateFrom.index(dateFrom.endIndex, offsetBy: -4)]))

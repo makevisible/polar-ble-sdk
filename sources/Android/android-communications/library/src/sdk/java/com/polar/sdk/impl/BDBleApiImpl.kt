@@ -2200,7 +2200,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
     override fun dumpAllFiles(identifier: String): Flowable<Pair<String, Long>> {
         val session = try {
-            sessionPsFtpClientReady(identifier)
+            PolarServiceClientUtils.sessionPsFtpClientReady(identifier, listener)
         } catch (error: Throwable) {
             return Flowable.error(error)
         }
@@ -2208,7 +2208,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
             ?: return Flowable.error(PolarServiceNotAvailable())
         
-        return fetchRecursively(client = client, path = "/", condition = { entry -> true});
+        return PolarFileUtils.fetchRecursively(client = client, path = "/", condition = { entry -> true }, tag = TAG, recurseDeep = true)
     }
 
     override fun isFtuDone(identifier: String): Single<Boolean> {
@@ -3388,7 +3388,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return Observable.fromIterable(datesList)
             .flatMapSingle { date ->
                 PolarActivityUtils.readActivitySamplesDataFromDayDirectory(
-                    client, date.toLocalDate())
+                    client, date)
                 }.map { activitySamplesDataList ->
                     activitySamplesDataList
                 }.toList()
@@ -4550,7 +4550,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         BleLogger.d(TAG, "removeSingleFile(): Removing file $filePath from device $identifier")
 
         val session = try {
-            sessionPsFtpClientReady(identifier)
+            PolarServiceClientUtils.sessionPsFtpClientReady(identifier, listener)
         } catch (error: Throwable) {
             return Single.error(error)
         }
