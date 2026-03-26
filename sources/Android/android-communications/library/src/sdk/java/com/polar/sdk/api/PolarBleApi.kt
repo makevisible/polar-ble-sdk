@@ -688,4 +688,27 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return [ChargeState] value indicating the last observed charging status of the device.
      */
     abstract fun getChargerState(identifier: String): ChargeState
+
+    /**
+     * Fetch the BLE device session for a given device identifier.
+     * This is useful for getting session state, RSSI values, and other device-specific info.
+     *
+     * @param identifier Polar device ID or BT address
+     * @return BleDeviceSession if found, null otherwise
+     */
+    abstract fun fetchSession(identifier: String): com.polar.androidcommunications.api.ble.model.BleDeviceSession?
+
+    /**
+     * Get a BLE device session that is ready for PMD (Polar Measurement Data) operations.
+     * This validates that the device is connected and PMD service is available.
+     *
+     * @param identifier Polar device ID or BT address
+     * @return BleDeviceSession if ready for PMD operations
+     * @throws PolarDeviceNotFound if device not found
+     * @throws PolarDeviceDisconnected if device not connected
+     * @throws PolarServiceNotAvailable if PMD service not available
+     * @throws PolarNotificationNotEnabled if PMD notifications not enabled
+     */
+    @Throws(Throwable::class)
+    abstract fun sessionPmdClientReady(identifier: String): com.polar.androidcommunications.api.ble.model.BleDeviceSession
 }

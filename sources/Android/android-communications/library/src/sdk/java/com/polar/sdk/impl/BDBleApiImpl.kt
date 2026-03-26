@@ -5270,6 +5270,15 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         logger?.message("Error: $message")
     }
 
+    override fun fetchSession(identifier: String): BleDeviceSession? {
+        return PolarServiceClientUtils.fetchSession(identifier, listener)
+    }
+
+    @Throws(Throwable::class)
+    override fun sessionPmdClientReady(identifier: String): BleDeviceSession {
+        return PolarServiceClientUtils.sessionPmdClientReady(identifier, listener)
+    }
+
     companion object {
         private const val TAG = "BDBleApiImpl"
         private var instance: BDBleApiImpl? = null
