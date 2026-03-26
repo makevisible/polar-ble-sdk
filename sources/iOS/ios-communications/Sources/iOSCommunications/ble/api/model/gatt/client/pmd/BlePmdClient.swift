@@ -44,13 +44,20 @@ public struct Pmd {
                 })
         })
     }
-    
+
     static func parseDeltaFramesToSamples(_ data: Data, channels: UInt8, resolution: UInt8) -> [[Int32]] {
         let refSamples = parseDeltaFrameRefSamples(data, channels: channels, resolution: resolution)
         var offset = Int(channels * UInt8(ceil(Double(resolution)/8.0)))
         var samples = [[Int32]]()
         samples.append(contentsOf: [refSamples])
         while offset < data.count {
+            guard offset + 2 <= data.count else {
+                BleLogger.error(
+                    "parseDeltaFramesToSamples() truncated header. offset=\(offset), data.count=\(data.count)"
+                )
+                BleLogger.trace_hex("Truncated PMD data:", data: data)
+                return samples
+            }
             let deltaSize = UInt32(data[offset])
             offset += 1
             let sampleCount = UInt32(data[offset])
@@ -66,7 +73,6 @@ public struct Pmd {
             let frame = data.subdata(in: offset..<(offset+length))
             let deltas = parseDeltaFrame(frame, channels: UInt32(channels), bitWidth: deltaSize, totalBitLength: bitLength)
             offset += length
-            var deltaSamples = [[Int32]]()
             deltas.forEach { (delta) in
                 var nextSamples = [Int32]()
                 let last = samples.last!
@@ -80,14 +86,9 @@ public struct Pmd {
                     }
                     nextSamples.append(sample.partialValue)
                 }
-                if nextSamples.count == Int(channels) {
-                    deltaSamples.append(nextSamples)
+                if (nextSamples.count == channels) {
+                    samples.append(nextSamples)
                 }
-            }
-            if deltaSamples.count == deltas.count {
-                samples.append(contentsOf: deltaSamples)
-            } else {
-                return samples
             }
         }
         return samples

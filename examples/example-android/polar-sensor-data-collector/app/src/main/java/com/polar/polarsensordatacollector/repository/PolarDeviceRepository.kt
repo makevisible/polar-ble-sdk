@@ -46,8 +46,10 @@ import io.reactivex.rxjava3.core.BackpressureStrategy
 import kotlinx.coroutines.rx3.asFlow
 import kotlinx.coroutines.rx3.awaitSingleOrNull
 import java.time.LocalDate
-import java.time.ZoneId
-import java.util.*
+import java.time.LocalDateTime
+import java.time.ZonedDateTime
+import java.util.EnumMap
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -102,6 +104,11 @@ data class SdkMode(
 data class OfflineRecTriggerStatus(
     val deviceId: String = "",
     val triggerStatus: PolarOfflineRecordingTrigger? = null
+)
+
+data class ChargeInformation(
+    val batteryLevel: Int = -1,
+    val chargerStatus: ChargeState = ChargeState.UNKNOWN
 )
 
 sealed class ResultOfRequest<out T> {
@@ -165,6 +172,13 @@ class PolarDeviceRepository @Inject constructor(
     private val _deviceSupportsSettings: MutableStateFlow<Boolean> = MutableStateFlow(false)
     var deviceSupportsSettings: StateFlow<Boolean> = _deviceSupportsSettings.asStateFlow()
 
+    private val _offlineExerciseV2Supported: MutableStateFlow<Map<String, Boolean>> =
+        MutableStateFlow(emptyMap())
+    val offlineExerciseV2Supported: StateFlow<Map<String, Boolean>> =
+        _offlineExerciseV2Supported.asStateFlow()
+
+    var chargeInfo = ChargeInformation()
+
     init {
         RxJavaPlugins.setErrorHandler { e ->
             if (e is UndeliverableException) {
@@ -202,7 +216,7 @@ class PolarDeviceRepository @Inject constructor(
         offlineRecEntry?.let { offlineEntry ->
             return@withContext try {
                 val result = measureTimedValue {
-                    api.removeOfflineRecord(deviceId, offlineEntry).await()
+                    api.removeOfflineRecord(deviceId, offlineEntry).toSingleDefault(Unit).await()
                 }
                 Log.d(TAG, "delete of recording $path took ${TimeUnit.MICROSECONDS.toSeconds(result.duration.inWholeMicroseconds)} seconds")
                 offlineEntryCache[deviceId]?.remove(offlineRecEntry)
@@ -284,18 +298,18 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    suspend fun setTime(deviceId: String, calendar: Calendar): ResultOfRequest<Nothing> = withContext(Dispatchers.IO) {
+    suspend fun setTime(deviceId: String, localDateTime: LocalDateTime): ResultOfRequest<Nothing> = withContext(Dispatchers.IO) {
         return@withContext try {
-            api.setLocalTime(deviceId, calendar).await()
+            api.setLocalTime(deviceId, localDateTime).await()
             ResultOfRequest.Success()
         } catch (e: Exception) {
             ResultOfRequest.Failure("Set time failed", e)
         }
     }
 
-    suspend fun getTime(deviceId: String): Calendar {
+    suspend fun getTime(deviceId: String): ZonedDateTime {
         return withContext(Dispatchers.IO) {
-            api.getLocalTime(deviceId).await()
+            api.getLocalTimeWithZone(deviceId).await()
         }
     }
 
@@ -342,27 +356,7 @@ class PolarDeviceRepository @Inject constructor(
             }
             is PolarOfflineRecordingData.PpgOfflineRecording -> {
                 collector.startPpgLog(logIdentifier, startTime = offlineRecData.startTime)
-                for (sample in offlineRecData.data.samples) {
-                    var ppgs: List<Int>
-                    when(sample.channelSamples.size) {
-                        17 -> {
-                            ppgs = sample.channelSamples.subList(0, 16)
-                            val status = sample.channelSamples[16].toUInt().toLong()
-                            collector.logPpgData16Channels(sample.timeStamp, ppgs, status)
-                        }
-                        3 -> {
-                            ppgs = sample.channelSamples.subList(0, 2)
-                            val status = sample.channelSamples[2].toUInt().toLong()
-                            collector.logPpg2Channels(sample.timeStamp, ppgs, status.toInt())
-                        }
-                        else -> {
-                            ppgs = sample.channelSamples.subList(0, 3)
-                            val ambient = sample.channelSamples[3]
-                            collector.logPpg(sample.timeStamp, ppgs, ambient)
-                        }
-                    }
-
-                }
+                collector.logPpgData(offlineRecData.data)
                 return collector.finalizeAllStreams().toList().first()
             }
             is PolarOfflineRecordingData.PpiOfflineRecording -> {
@@ -473,85 +467,61 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    override fun bleSdkFeatureReady(identifier: String, feature: PolarBleApi.PolarBleSdkFeature) {
-        Log.d(TAG, "feature ready $feature")
-        when (feature) {
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_H10_EXERCISE_RECORDING,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_FILE_TRANSFER,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_FEATURES_CONFIGURATION_SERVICE,
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA -> {
-                // do nothing
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_HR -> {
-                api.getAvailableHRServiceDataTypes(identifier)
-                    .subscribe(
-                        { types ->
-                            Log.d(TAG, "Available online streaming data: $types")
-                            updateOnlineStreamDataTypes(identifier, types)
-                        },
-                        { exception: Throwable ->
-                            Log.d(TAG, "Failed to check if HR service is available. Reason $exception")
-                        },
-                    )
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
-                api.getAvailableOnlineStreamDataTypes(identifier)
-                    .subscribe(
-                        { types ->
-                            Log.d(TAG, "Available online streaming data: $types")
-                            updateOnlineStreamDataTypes(identifier, types)
-                        },
-                        { exception: Throwable ->
-                            Log.d(TAG, "Failed to get available online streaming types. Reason $exception")
-                        },
-                    )
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_OFFLINE_RECORDING -> {
-                api.getAvailableOfflineRecordingDataTypes(identifier)
-                    .subscribe(
-                        { types ->
-                            Log.d(TAG, "Available offline recording data: $types")
-                            updateOfflineStreamDataTypes(identifier, types)
-                        },
-                        { exception: Throwable ->
-                            Log.d(TAG, "Failed to get available offline recording types. Reason $exception")
-                        },
-                    )
-            }
+    override fun bleSdkFeaturesReadiness(identifier: String, ready: List<PolarBleApi.PolarBleSdkFeature>, unavailable: List<PolarBleApi.PolarBleSdkFeature>) {
+        Log.d(TAG, "Features readiness. Ready: $ready, Unavailable: $unavailable")
 
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SDK_MODE -> {
-                _sdkModeState.update {
-                    it.copy(deviceId = identifier, isAvailable = true)
-                }
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_HTS -> {
-                // do nothing
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_LED_ANIMATION -> {
-                // do nothing
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_FIRMWARE_UPDATE -> {
-                // do nothing
-            }
+        if (ready.contains(PolarBleApi.PolarBleSdkFeature.FEATURE_HR)) {
+            api.getAvailableHRServiceDataTypes(identifier)
+                .subscribe(
+                    { types ->
+                        Log.d(TAG, "Available online streaming data: $types")
+                        updateOnlineStreamDataTypes(identifier, types)
+                    },
+                    { exception: Throwable ->
+                        Log.d(TAG, "Failed to check if HR service is available. Reason $exception")
+                    },
+                )
+        }
 
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA -> {
-                // do nothing
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SLEEP_DATA -> {
-                // do nothing
-            }
-            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_TEMPERATURE_DATA -> {
-                // do nothing
+        if (ready.contains(PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING)) {
+            api.getAvailableOnlineStreamDataTypes(identifier)
+                .subscribe(
+                    { types ->
+                        Log.d(TAG, "Available online streaming data: $types")
+                        updateOnlineStreamDataTypes(identifier, types)
+                    },
+                    { exception: Throwable ->
+                        Log.d(TAG, "Failed to get available online streaming types. Reason $exception")
+                    },
+                )
+        }
+
+        if (ready.contains(PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_OFFLINE_RECORDING)) {
+            api.getAvailableOfflineRecordingDataTypes(identifier)
+                .subscribe(
+                    { types ->
+                        Log.d(TAG, "Available offline recording data: $types")
+                        updateOfflineStreamDataTypes(identifier, types)
+                    },
+                    { exception: Throwable ->
+                        Log.d(TAG, "Failed to get available offline recording types. Reason $exception")
+                    },
+                )
+        }
+
+        if (ready.contains(PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_SDK_MODE)) {
+            _sdkModeState.update {
+                it.copy(deviceId = identifier, isAvailable = true)
             }
         }
     }
 
+    override fun bleSdkFeatureReady(identifier: String, feature: PolarBleApi.PolarBleSdkFeature) {
+        Log.d(TAG, "feature ready $feature")
+    }
+
     fun getDeviceName(deviceId: String): String? {
-        return api.fetchSession(deviceId)?.name
+        return api.getDeviceName(deviceId)
     }
 
     private fun updateOnlineStreamDataTypes(identifier: String, features: Set<PolarBleApi.PolarDeviceDataType>) {
@@ -711,6 +681,10 @@ class PolarDeviceRepository @Inject constructor(
                     Log.e(TAG, "SDK Mode LED animation change failed: $error")
                 }
             )
+    }
+
+    fun observeDeviceToHostNotifications(deviceId: String): Flowable<com.polar.sdk.api.PolarD2HNotificationData> {
+        return api.observeDeviceToHostNotifications(deviceId)
     }
 
     fun doFirmwareUpdate(deviceId: String, firmwareUrl: String = ""): Flowable<FirmwareUpdateStatus> {
@@ -997,7 +971,7 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    suspend fun get247HrSamplesData(deviceId: String, from: Date, to: Date): ResultOfRequest<List<Polar247HrSamplesData>> = withContext(Dispatchers.IO) {
+    suspend fun get247HrSamplesData(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<Polar247HrSamplesData>> = withContext(Dispatchers.IO) {
         return@withContext try {
             val result = api.get247HrSamples(deviceId, from, to).await()
             ResultOfRequest.Success(result)
@@ -1015,7 +989,7 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    suspend fun get247PPiSamples(deviceId: String, from: Date, to: Date): ResultOfRequest<List<Polar247PPiSamplesData>> = withContext(Dispatchers.IO) {
+    suspend fun get247PPiSamples(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<Polar247PPiSamplesData>> = withContext(Dispatchers.IO) {
         return@withContext try {
             val result = api.get247PPiSamples(deviceId, from, to).await()
             ResultOfRequest.Success(result)
@@ -1105,7 +1079,7 @@ class PolarDeviceRepository @Inject constructor(
         }
     }
 
-    fun getTrainingSessionReferences(deviceId: String, fromDate: Date, toDate: Date): Flow<PolarTrainingSessionReference> {
+    fun getTrainingSessionReferences(deviceId: String, fromDate: LocalDate, toDate: LocalDate): Flow<PolarTrainingSessionReference> {
         Log.d(TAG, "getTrainingSessionReferences from device $deviceId")
         return api.getTrainingSessionReferences(deviceId, fromDate, toDate)
             .doOnSubscribe {
@@ -1198,12 +1172,9 @@ class PolarDeviceRepository @Inject constructor(
         return api.setMultiBLEConnectionMode(deviceId, enable)
     }
 
-    suspend fun getActivitySamplesData(deviceId: String, from: Date, to: Date): ResultOfRequest<List<PolarActivitySamplesDayData>> = withContext(Dispatchers.IO) {
+    suspend fun getActivitySamplesData(deviceId: String, from: LocalDate, to: LocalDate): ResultOfRequest<List<PolarActivitySamplesDayData>> = withContext(Dispatchers.IO) {
         return@withContext try {
-            var result = api.getActivitySampleData(deviceId,
-                from.toInstant().atZone(ZoneId.systemDefault()).toLocalDate(),
-                to.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-            ).await()
+            var result = api.getActivitySampleData(deviceId, from, to).await()
             ResultOfRequest.Success(result)
         } catch (e: Exception) {
             ResultOfRequest.Failure(e.message.toString(), e)
@@ -1291,4 +1262,105 @@ class PolarDeviceRepository @Inject constructor(
                 Log.d(TAG, "HR Broadcast stream completed")
             }
     }
+
+    suspend fun setAutosFilesEnabled(deviceId: String, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            api.setAutomaticOHRMeasurementEnabled(deviceId, enabled).await()
+        }
+
+    suspend fun readFile(deviceId: String, filePath: String): ResultOfRequest<ByteArray> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val result = api.readFile(deviceId, filePath).awaitSingleOrNull()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
+    suspend fun listFiles(deviceId: String, filePath: String, deleteDeep: Boolean): ResultOfRequest<List<String>> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val result = api.getFileList(deviceId, filePath, deleteDeep).await()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
+    suspend fun writeFile(deviceId: String, filePath: String, fileData: Any) = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val result = api.writeFile(deviceId, filePath, fileData as ByteArray).await()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
+    suspend fun deleteFile(deviceId: String, filePath: String) = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val result = api.deleteFileOrDirectory(deviceId, filePath).await()
+            ResultOfRequest.Success(result)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
+    suspend fun getChargeInformation(deviceId: String) = withContext(Dispatchers.IO) {
+        var batteryLevelInfo: Int
+        var chargerStatusInfo: ChargeState
+
+        return@withContext try {
+            chargerStatusInfo = api.getChargerState(deviceId).apply {
+                batteryLevelInfo = api.getBatteryLevel(deviceId)
+            }
+
+            chargeInfo = ChargeInformation(
+                batteryLevel = batteryLevelInfo,
+                chargerStatus = chargerStatusInfo
+            )
+
+            ResultOfRequest.Success(chargeInfo)
+        } catch (e: Exception) {
+            ResultOfRequest.Failure(e.message.toString(), e)
+        }
+    }
+
+    suspend fun isOfflineExerciseV2Supported(deviceId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val supported = (api as? com.polar.sdk.api.PolarOfflineExerciseV2Api)?.let { exerciseApi ->
+                    // Try immediate check first
+                    try {
+                        val result = exerciseApi.isOfflineExerciseV2Supported(deviceId)
+                            .await()
+                        Log.d(TAG, "Offline Exercise V2 support check SUCCESS (immediate): $result")
+                        result
+                    } catch (e: Exception) {
+                        // If immediate check fails (PFTP not ready), retry after delay
+                        Log.w(TAG, "Immediate check failed (PFTP not ready), retrying after 3s delay...")
+                        kotlinx.coroutines.delay(3000) // Wait 3 seconds for PFTP to initialize
+
+                        try {
+                            val result = exerciseApi.isOfflineExerciseV2Supported(deviceId)
+                                .await()
+                            Log.d(TAG, "Offline Exercise V2 support check SUCCESS (after retry): $result")
+                            result
+                        } catch (retryError: Exception) {
+                            Log.e(TAG, "Offline Exercise V2 support check failed even after retry: ${retryError.message}")
+                            false
+                        }
+                    }
+                } ?: false
+
+                _offlineExerciseV2Supported.update { current ->
+                    val updated = current.toMutableMap()
+                    updated[deviceId] = supported
+                    updated
+                }
+
+                supported
+            } catch (e: Exception) {
+                Log.e(TAG, "Offline Exercise V2 support check failed for $deviceId", e)
+                false
+            }
+        }
 }

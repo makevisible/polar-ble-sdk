@@ -66,8 +66,12 @@ $dokka.location:com.polar.sdk.api/PolarBleApi.PolarBleApiLogger///PointingToDecl
 $dokka.location:com.polar.sdk.api/PolarBleApi.PolarBleSdkFeature///PointingToDeclaration/com/polar/sdk/api/PolarBleApi.PolarBleSdkFeature.html
 $dokka.location:com.polar.sdk.api/PolarBleApi.PolarDeviceDataType///PointingToDeclaration/com/polar/sdk/api/PolarBleApi.PolarDeviceDataType.html
 $dokka.location:com.polar.sdk.api/PolarBleApi.PolarStoredDataType///PointingToDeclaration/com/polar/sdk/api/PolarBleApi.PolarStoredDataType.html
+$dokka.location:com.polar.sdk.api/PolarDeviceToHostNotification.Companion///PointingToDeclaration/com/polar/sdk/api/PolarDeviceToHostNotification.Companion.html
 $dokka.location:com.polar.sdk.api/PolarH10OfflineExerciseApi.RecordingInterval///PointingToDeclaration/com/polar/sdk/api/PolarH10OfflineExerciseApi.RecordingInterval.html
 $dokka.location:com.polar.sdk.api/PolarH10OfflineExerciseApi.SampleType///PointingToDeclaration/com/polar/sdk/api/PolarH10OfflineExerciseApi.SampleType.html
+$dokka.location:com.polar.sdk.api/PolarOfflineExerciseV2Api.Companion///PointingToDeclaration/com/polar/sdk/api/PolarOfflineExerciseV2Api.Companion.html
+$dokka.location:com.polar.sdk.api/PolarOfflineExerciseV2Api.OfflineExerciseStartResult///PointingToDeclaration/com/polar/sdk/api/PolarOfflineExerciseV2Api.OfflineExerciseStartResult.html
+$dokka.location:com.polar.sdk.api/PolarOfflineExerciseV2Api.StartResult///PointingToDeclaration/com/polar/sdk/api/PolarOfflineExerciseV2Api.StartResult.html
 $dokka.location:com.polar.sdk.impl.utils/PolarBackupManager.BackupFileData///PointingToDeclaration/com/polar/sdk/impl/utils/PolarBackupManager.BackupFileData.html
 com.polar.sdk.api
 com.polar.sdk.api.errors
@@ -76,5 +80,6 @@ com.polar.sdk.api.model.activity
 com.polar.sdk.api.model.restapi
 com.polar.sdk.api.model.sleep
 com.polar.sdk.api.model.trainingsession
+com.polar.sdk.impl
 com.polar.sdk.impl.utils
 

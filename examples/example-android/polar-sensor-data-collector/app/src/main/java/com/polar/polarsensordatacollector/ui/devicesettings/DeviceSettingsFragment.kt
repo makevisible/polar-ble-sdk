@@ -36,31 +36,29 @@ import com.google.gson.GsonBuilder
 import com.polar.polarsensordatacollector.R
 import com.polar.polarsensordatacollector.repository.SdkMode
 import com.polar.polarsensordatacollector.ui.activity.ActivityRecordingFragmentDirections
+import com.polar.polarsensordatacollector.ui.exercise.ExerciseActivity
+import com.polar.polarsensordatacollector.ui.genericapi.GenericApiActivity
 import com.polar.polarsensordatacollector.ui.utils.showSnackBar
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.model.CheckFirmwareUpdateStatus
 import com.polar.sdk.api.model.PolarDiskSpaceData
+import com.polar.sdk.api.model.PolarPhysicalConfiguration
 import com.polar.sdk.api.model.PolarUserDeviceSettings
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
-import com.polar.polarsensordatacollector.ui.exercise.ExerciseActivity
-import com.polar.sdk.api.model.PolarPhysicalConfiguration
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
-import java.text.SimpleDateFormat
-import java.util.Locale
+
 
 @AndroidEntryPoint
 class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     companion object {
         private const val TAG = "DeviceSettingsFragment"
-        private const val INTENSITY_SELECTION_ENABLED_ALPHA = 1.0f
-        private const val INTENSITY_SELECTION_DISABLED_ALPHA = 0.4f
     }
 
     private val viewModel: DeviceSettingsViewModel by viewModels()
@@ -76,6 +74,10 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     private lateinit var ppiModeLedGroup: ConstraintLayout
     private lateinit var ppiModeLedButton: Button
     private lateinit var ppiModeLedHeader: TextView
+
+    private lateinit var deviceToHostNotificationsGroup: ConstraintLayout
+    private lateinit var deviceToHostNotificationsButton: Button
+    private lateinit var deviceToHostNotificationsHeader: TextView
 
     private lateinit var timeSettingsGroup: ConstraintLayout
     private lateinit var readTimeButton: Button
@@ -152,6 +154,14 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     private lateinit var sleepRecordingStateHeader: TextView
     private lateinit var forceStopSleepButton: Button
     private lateinit var forceStopSleepGroup: ConstraintLayout
+
+    private lateinit var batteryLevelGroup: ConstraintLayout
+    private lateinit var getBatteryLevelHeader: TextView
+    private lateinit var getChargeStateButton: Button
+
+    private lateinit var genericButton: Button
+    private lateinit var genericText: TextView
+    private var genericButtonCounter: Int = 0
 
     private var latestPhysicalConfiguration: PolarPhysicalConfiguration? = null
 
@@ -269,6 +279,14 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             }
         }
 
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiDeviceToHostNotificationsState.collect { state ->
+                    deviceToHostNotificationsButton.text = if (state.isObserving) "Stop" else "Start"
+                }
+            }
+        }
+
         sdkModeToggleButton.setOnClickListener {
             viewModel.sdkModeToggle()
         }
@@ -279,6 +297,10 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         ppiModeLedButton.setOnClickListener {
             viewModel.ppiModeLedAnimation()
+        }
+
+        deviceToHostNotificationsButton.setOnClickListener {
+            viewModel.toggleDeviceToHostNotifications()
         }
 
         setExerciseButton.setOnClickListener {
@@ -437,6 +459,30 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             }
         }
 
+        getChargeStateButton.setOnClickListener {
+            try {
+                viewModel.getChargeState()
+            } catch (e: Exception) {
+                Log.e(TAG, "An error occurred while getting charge state: ", e)
+                Toast.makeText(this.context, "An error occurred while getting charge status. Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        genericButton.isEnabled = true
+        genericText.alpha = 0F
+
+        genericButton.setOnClickListener {
+                if (genericButtonCounter == 8){
+                    genericButton.alpha = 1F
+                    genericText.alpha = 1F
+                }
+                if (genericButtonCounter >= 9){
+                    GenericApiActivity.launch(requireContext())
+                } else {
+                    genericButtonCounter++
+                }
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.connectionStatus.collect { isConnected ->
@@ -467,6 +513,10 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         ppiModeLedGroup = view.findViewById(R.id.ppi_mode_led_group)
         ppiModeLedHeader = view.findViewById(R.id.ppi_mode_led_header)
         ppiModeLedButton = view.findViewById(R.id.ppi_mode_toggle_led_button)
+
+        deviceToHostNotificationsGroup = view.findViewById(R.id.device_to_host_notifications_group)
+        deviceToHostNotificationsHeader = view.findViewById(R.id.device_to_host_notifications_header)
+        deviceToHostNotificationsButton = view.findViewById(R.id.device_to_host_notifications_button)
 
         timeSettingsGroup = view.findViewById(R.id.time_settings_group)
         readTimeButton = view.findViewById(R.id.time_settings_read_button)
@@ -512,8 +562,11 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         doFirmwareUpdateCustomUrlButton = view.findViewById(R.id.do_firmware_update_custom_url_button)
         firmwareUpdateStatusText = view.findViewById(R.id.firmware_update_status)
 
+
         sleepRecordingStateHeader = view.findViewById(R.id.force_stop_sleep_header)
         forceStopSleepButton = view.findViewById(R.id.force_stop_sleep_button)
+        genericButton = view.findViewById(R.id.generic_api_button)
+        genericText = view.findViewById(R.id.generic_api_header)
 
         val adapter = ArrayAdapter(
             requireContext(),
@@ -561,6 +614,10 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         forceStopSleepButton = view.findViewById(R.id.force_stop_sleep_button)
         forceStopSleepGroup = view.findViewById(R.id.force_stop_sleep_group)
+
+        batteryLevelGroup = view.findViewById(R.id.battery_status_group)
+        getBatteryLevelHeader = view.findViewById(R.id.get_charge_state_header)
+        getChargeStateButton = view.findViewById(R.id.get_charge_state_button)
     }
 
     private fun settingsSupportUiState(settingsSupportUiState: SettingsSupportUiState) {
@@ -576,8 +633,8 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             waitForConnectionStatusGroup.visibility = GONE
             userDataDeletionSelectGroup.visibility = GONE
             getDiskSpaceGroup.visibility = GONE
+            batteryLevelGroup.visibility = GONE
             forceStopSleepGroup.visibility = GONE
-            doUserDeviceSettingsGroup.visibility = GONE
             setTurnDeviceOffGroup.visibility = GONE
         }
     }
@@ -758,12 +815,11 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     }
 
     private fun showUserPhysicalInfoDialog(physInfo: PolarPhysicalConfiguration) {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val ctx = requireContext()
 
         val message = buildString {
             appendLine(getString(R.string.ftu_gender, physInfo.gender))
-            appendLine(getString(R.string.ftu_birthdate, dateFormat.format(physInfo.birthDate)))
+            appendLine(getString(R.string.ftu_birthdate, physInfo.birthDate.toString()))
             appendLine(getString(R.string.ftu_height, physInfo.height))
             appendLine(getString(R.string.ftu_weight, physInfo.weight))
             appendLine(getString(R.string.ftu_max_hr, physInfo.maxHeartRate))

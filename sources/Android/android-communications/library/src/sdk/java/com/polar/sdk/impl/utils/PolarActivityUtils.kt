@@ -10,7 +10,6 @@ import com.polar.sdk.api.model.activity.PolarDailySummaryData
 import com.polar.sdk.api.model.activity.parsePbActivityInfo
 import com.polar.sdk.api.model.activity.parsePbDailySummary
 import com.polar.sdk.api.model.activity.polarActiveTimeFromProto
-import com.polar.sdk.impl.BDBleApiImpl.FetchRecursiveCondition
 import fi.polar.remote.representation.protobuf.ActivitySamples
 import fi.polar.remote.representation.protobuf.DailySummary
 import io.reactivex.rxjava3.core.Flowable
@@ -21,17 +20,13 @@ import org.reactivestreams.Publisher
 import protocol.PftpRequest
 import protocol.PftpResponse.PbPFtpDirectory
 import java.io.ByteArrayOutputStream
-import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
-import java.util.Date
-import java.util.Locale
 import java.time.LocalDate
 
 private const val ARABICA_USER_ROOT_FOLDER = "/U/0/"
 private const val ACTIVITY_DIRECTORY = "ACT/"
 private const val DAILY_SUMMARY_DIRECTORY = "DSUM/"
 private const val DAILY_SUMMARY_PROTO = "DSUM.BPB"
-private val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.ENGLISH)
 private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 private const val TAG = "PolarActivityUtils"
 
@@ -196,7 +191,7 @@ internal object PolarActivityUtils {
     fun readActivitySamplesDataFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<PolarActivitySamplesDayData> {
         BleLogger.d(TAG, "readActivitySamplesDataFromDayDirectory: $date")
         return Single.create { emitter ->
-            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${dateFormat.format(date)}/${ACTIVITY_DIRECTORY}"
+            val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${ACTIVITY_DIRECTORY}"
             var fileList = mutableListOf<String>()
             var activitySamplesDataList: MutableList<PolarActivitySamplesData> = mutableListOf()
             var activitySamplesDayData = PolarActivitySamplesDayData()
@@ -290,7 +285,7 @@ internal object PolarActivityUtils {
         }
     }
 
-    private fun listFiles(client: BlePsFtpClient, folderPath: String = "/", condition: FetchRecursiveCondition): Flowable<String> {
+    private fun listFiles(client: BlePsFtpClient, folderPath: String = "/", condition: PolarFileUtils.FetchRecursiveCondition): Flowable<String> {
 
         var path = folderPath
         if (path.first() != '/') {
@@ -312,7 +307,7 @@ internal object PolarActivityUtils {
             }
     }
 
-    private fun fetchRecursively(client: BlePsFtpClient, path: String, condition: FetchRecursiveCondition): Flowable<Pair<String, Long>> {
+    private fun fetchRecursively(client: BlePsFtpClient, path: String, condition: PolarFileUtils.FetchRecursiveCondition): Flowable<Pair<String, Long>> {
         val builder = PftpRequest.PbPFtpOperation.newBuilder()
         builder.command = PftpRequest.PbPFtpOperation.Command.GET
         builder.path = path

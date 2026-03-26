@@ -20,8 +20,8 @@ import protocol.PftpRequest
 import protocol.PftpResponse
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 
@@ -30,13 +30,13 @@ private const val TAG = "PolarTrainingSessionUtils"
 
 internal object PolarTrainingSessionUtils {
 
-    private val dateFormatter = SimpleDateFormat("yyyyMMdd", Locale.ENGLISH)
-    private val dateTimeFormatter = SimpleDateFormat("yyyyMMddHHmmss", Locale.ENGLISH)
+    private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ENGLISH)
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd", Locale.ENGLISH)
 
     fun getTrainingSessionReferences(
         client: BlePsFtpClient,
-        fromDate: Date? = null,
-        toDate: Date? = null
+        fromDate: LocalDate? = null,
+        toDate: LocalDate? = null
     ): Flowable<PolarTrainingSessionReference> {
         BleLogger.d(TAG, "getTrainingSessions: fromDate=$fromDate, toDate=$toDate")
 
@@ -46,10 +46,10 @@ internal object PolarTrainingSessionUtils {
         val references = mutableListOf<PolarTrainingSessionReference>()
         var trainingSessionSummaryPaths = hashSetOf<String>()
 
-        return fetchRecursively(
+        return PolarFileUtils.fetchRecursively(
             client = client,
             path = ARABICA_USER_ROOT_FOLDER,
-            condition = object : FetchRecursiveCondition {
+            condition = object : PolarFileUtils.FetchRecursiveCondition {
                 override fun include(name: String): Boolean {
                     return name.matches(Regex("^\\d{8}/$")) ||
                             name.matches(Regex("^\\d{6}/$")) ||
@@ -58,8 +58,8 @@ internal object PolarTrainingSessionUtils {
                             name.endsWith(".GZB") ||
                             name == "E/"
                 }
-            }
-        )
+            }, tag = TAG,
+            recurseDeep = true)
             .collectInto(references) { refs, (path, fileSize) ->
                 BleLogger.d(TAG, "path: $path, size: $fileSize bytes")
                 val dataType =
@@ -77,7 +77,7 @@ internal object PolarTrainingSessionUtils {
                     val dateInt = dateStr?.toIntOrNull()
 
                     if (dateStr != null && timeStr != null && dateInt != null && dateInt in startDateInt..endDateInt) {
-                        val date = dateTimeFormatter.parse("$dateStr$timeStr") ?: Date(0)
+                        val date = LocalDate.parse("$dateStr$timeStr", dateTimeFormatter)
                         BleLogger.d(TAG, "Parsed date: $date")
 
                         val existingReference = refs.find { it.date == date }
@@ -371,53 +371,5 @@ internal object PolarTrainingSessionUtils {
                 BleLogger.e(TAG, "Failed to delete: ${throwable.message}")
                 return@onErrorResumeNext Completable.error(throwable)
             }
-    }
-
-    private fun fetchRecursively(
-        client: BlePsFtpClient,
-        path: String,
-        condition: FetchRecursiveCondition
-    ): Flowable<Pair<String, Long>> {
-        BleLogger.d(TAG, "fetchRecursively: Starting fetch for path: $path")
-
-        val builder = PftpRequest.PbPFtpOperation.newBuilder()
-        builder.command = PftpRequest.PbPFtpOperation.Command.GET
-        builder.path = path
-
-        return client.request(builder.build().toByteArray())
-            .toFlowable()
-            .flatMap { byteArrayOutputStream ->
-
-                val dir = PftpResponse.PbPFtpDirectory.parseFrom(byteArrayOutputStream.toByteArray())
-                val entries = mutableMapOf<String, Long>()
-
-                for (entry in dir.entriesList) {
-                    BleLogger.d(TAG, "fetchRecursively: Found entry, name: ${entry.name}, size: ${entry.size}")
-                    if (condition.include(entry.name)) {
-                        entries[path + entry.name] = entry.size
-                    }
-                }
-
-                if (entries.isNotEmpty()) {
-                    return@flatMap Flowable.fromIterable(entries.toList())
-                        .flatMap { entry ->
-                            if (entry.first.endsWith("/")) {
-                                fetchRecursively(client, entry.first, condition)
-                            } else {
-                                Flowable.just(entry)
-                            }
-                        }
-                }
-
-                BleLogger.d(TAG, "fetchRecursively: No entries found for path: $path")
-                Flowable.empty()
-            }
-            .doOnError { error ->
-                BleLogger.e(TAG, "fetchRecursively: Error occurred for path: $path, error: $error")
-            }
-    }
-
-    interface FetchRecursiveCondition {
-        fun include(name: String): Boolean
     }
 }

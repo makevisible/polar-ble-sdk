@@ -5,18 +5,19 @@ import fi.polar.remote.representation.protobuf.Types.PbDate
 import fi.polar.remote.representation.protobuf.Types.PbTime
 import fi.polar.remote.representation.protobuf.Types.PbDeviceLocation
 import fi.polar.remote.representation.protobuf.UserDeviceSettings
+import fi.polar.remote.representation.protobuf.UserDeviceSettings.PbAutomaticMeasurementSettings
 import fi.polar.remote.representation.protobuf.UserDeviceSettings.PbUserDeviceGeneralSettings
 import fi.polar.remote.representation.protobuf.UserDeviceSettings.PbUserDeviceSettings
 import java.time.ZonedDateTime
 import java.time.ZoneId
-import java.util.Calendar
 
 data class PolarUserDeviceSettings(val deviceLocation: Int? = null,
                                    val usbConnectionMode: Boolean? = null,
                                    val automaticTrainingDetectionMode: Boolean? = null,
                                    val automaticTrainingDetectionSensitivity: Int? = null,
                                    val telemetryEnabled: Boolean? = null,
-                                   val minimumTrainingDurationSeconds: Int? = null
+                                   val minimumTrainingDurationSeconds: Int? = null,
+                                   val autosFilesEnabled: Boolean? = null
 ) {
 
     enum class DeviceLocation(val value: Int) {
@@ -37,8 +38,9 @@ data class PolarUserDeviceSettings(val deviceLocation: Int? = null,
     }
 
     companion object {
-        infix fun from(value: Int): DeviceLocation? = DeviceLocation.values().firstOrNull {it.value == value}
+        infix fun from(value: Int): DeviceLocation? = DeviceLocation.entries.firstOrNull {it.value == value}
         const val DEVICE_SETTINGS_FILENAME = "/U/0/S/UDEVSET.BPB"
+        const val SENSOR_SETTINGS_FILENAME = "/UDEVSET.BPB"
     }
 
     fun toProto(): PbUserDeviceSettings {
@@ -72,6 +74,16 @@ data class PolarUserDeviceSettings(val deviceLocation: Int? = null,
 
         minimumTrainingDurationSeconds?.let {
             pbAutomaticTrainingDetectionSettings.setMinimumTrainingDurationSeconds(minimumTrainingDurationSeconds)
+        }
+
+        autosFilesEnabled?.let {
+            pbUserAutomaticMeasurementSettings.setAutomaticOhrMeasurement(
+                PbAutomaticMeasurementSettings.newBuilder()
+                    .setState(
+                        if (autosFilesEnabled) PbAutomaticMeasurementSettings.PbAutomaticMeasurementState.ALWAYS_ON
+                        else PbAutomaticMeasurementSettings.PbAutomaticMeasurementState.OFF
+                    )
+            )
         }
 
         return PbUserDeviceSettings.newBuilder()
@@ -125,13 +137,22 @@ data class PolarUserDeviceSettings(val deviceLocation: Int? = null,
             null
         }
 
+        val autosFilesEnabled = if (proto.hasAutomaticMeasurementSettings() &&
+            proto.automaticMeasurementSettings.hasAutomaticOhrMeasurement() &&
+            proto.automaticMeasurementSettings.automaticOhrMeasurement.hasState()) {
+            proto.automaticMeasurementSettings.automaticOhrMeasurement.state != PbAutomaticMeasurementSettings.PbAutomaticMeasurementState.OFF
+        } else {
+            true
+        }
+
         return PolarUserDeviceSettings(
             deviceLocation,
             usbConnectionMode,
             automaticTrainingDetectionMode = automaticTrainingDetectionMode,
             automaticTrainingDetectionSensitivity = automaticTrainingDetectionSensitivity,
             telemetryEnabled = telemetryEnabled,
-            minimumTrainingDurationSeconds = minimumTrainingDurationSeconds
+            minimumTrainingDurationSeconds = minimumTrainingDurationSeconds,
+            autosFilesEnabled = autosFilesEnabled
         )
     }
 }

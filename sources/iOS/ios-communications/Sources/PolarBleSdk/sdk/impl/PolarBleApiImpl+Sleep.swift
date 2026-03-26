@@ -24,7 +24,7 @@ extension PolarBleApiImpl: PolarSleepApi {
     }
     
     func stopSleepRecording(identifier: String) -> RxSwift.Completable {
-        let checkApiAvailable = self.getFile(identifier: identifier, filePath: "/REST/SLEEP.API")
+        let checkApiAvailable = self.fileUtils.getFile(identifier: identifier, filePath: "/REST/SLEEP.API")
             .catch { error in
                 if case let BlePsFtpException.responseError(code) = error {
                     return Observable.error(code == 103 ? Failure.sleepApiNotSupported : error)
@@ -71,7 +71,7 @@ extension PolarBleApiImpl: PolarSleepApi {
         
     func observeSleepRecordingState(identifier: String) -> Observable<[Bool]> {
         let checkApiAvailable =
-            self.getFile(identifier: identifier, filePath: "/REST/SLEEP.API")
+        self.fileUtils.getFile(identifier: identifier, filePath: "/REST/SLEEP.API")
             .catch { error in
                 if case let BlePsFtpException.responseError(code) = error {
                     return Observable.error(code == 103 ? Failure.sleepApiNotSupported : error)
@@ -90,14 +90,14 @@ extension PolarBleApiImpl: PolarSleepApi {
         return checkApiAvailable.andThen(subscribe).andThen(receiveSleepRecordingEnabled)
     }
     
-    func getSleepData(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarSleepData.PolarSleepAnalysisResult]> {
+    func getSleep(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarSleepData.PolarSleepAnalysisResult]> {
         
         if (fromDate > toDate) {
             return Single.error(PolarErrors.invalidArgument(description: "toDate cannot be smaller than fromDate."))
         }
         
         do {
-            let session = try self.sessionFtpClientReady(identifier)
+            let session = try serviceClientUtils.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Single.error(PolarErrors.serviceNotFound)
             }
@@ -149,5 +149,10 @@ extension PolarBleApiImpl: PolarSleepApi {
         } catch {
             return Single.error(error)
         }
+    }
+
+    @available(*, deprecated, renamed: "getSleep(identifier:fromDate:toDate:)")
+    func getSleepData(identifier: String, fromDate: Date, toDate: Date) -> Single<[PolarSleepData.PolarSleepAnalysisResult]> {
+        return getSleep(identifier: identifier, fromDate: fromDate, toDate: toDate)
     }
 }

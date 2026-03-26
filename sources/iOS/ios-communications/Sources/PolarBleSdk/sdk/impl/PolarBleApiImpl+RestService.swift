@@ -128,6 +128,9 @@ public struct PolarDeviceRestApiServiceDescription: Decodable {
 public protocol PolarRestServiceApi {
    
     /// Discover available services from device
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
+    ///
     /// - parameters:
     ///   - identifier: Polar Device ID or BT address
     /// - returns:
@@ -136,6 +139,9 @@ public protocol PolarRestServiceApi {
     func listRestApiServices(identifier: String) -> Single<PolarDeviceRestApiServices>
     
     /// Get details related to particular REST API.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
+    ///
     /// - parameters:
     ///   - identifier: Polar Device ID or BT address
     ///   - path: the REST API path corresponding to a named service returned by listRestApiServices
@@ -145,6 +151,8 @@ public protocol PolarRestServiceApi {
     func getRestApiDescription(identifier: String, path: String) -> Single<PolarDeviceRestApiServiceDescription>
     
     /// Notify device via a REST API in the device.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
     ///
     /// - parameters:
     ///   - identifier: Polar device ID or BT address
@@ -156,6 +164,8 @@ public protocol PolarRestServiceApi {
     
     /// Streams for received device REST API events  parameters decoded as given Decodable type T endlessly.
     /// Only dispose , take(1) etc ... stops stream.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
     ///
     /// Normally requires event action that enables subscribing to the event using putNotification()
     /// - parameters:
@@ -191,7 +201,7 @@ extension PolarBleApiImpl : PolarRestServiceApi {
     private func getDataFromPath(identifier: String, path: String) -> Single<Data> {
         return Single<Data>.create { single in
             do {
-                let session = try self.sessionFtpClientReady(identifier)
+                let session = try self.serviceClientUtils.sessionFtpClientReady(identifier)
                 guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                     single(.failure(PolarErrors.serviceNotFound))
                     return Disposables.create()
@@ -230,7 +240,7 @@ extension PolarBleApiImpl : PolarRestServiceApi {
     
     private func pFtpWriteOperation(identifier: String, command: Protocol_PbPFtpOperation.Command, path: String, data: Data) -> Completable {
         do {
-            let session = try self.sessionFtpClientReady(identifier)
+            let session = try self.serviceClientUtils.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Completable.error(PolarErrors.serviceNotFound)
             }
@@ -249,7 +259,7 @@ extension PolarBleApiImpl : PolarRestServiceApi {
     
     func receiveRestApiEvents<T:Decodable>(identifier: String) -> Observable<[T]> {
         do {
-            let session = try self.sessionFtpClientReady(identifier)
+            let session = try self.serviceClientUtils.sessionFtpClientReady(identifier)
             guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
                 return Observable.error(PolarErrors.serviceNotFound)
             }

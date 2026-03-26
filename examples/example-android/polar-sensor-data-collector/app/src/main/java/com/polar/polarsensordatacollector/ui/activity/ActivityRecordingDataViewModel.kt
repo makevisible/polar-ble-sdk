@@ -2,13 +2,13 @@ package com.polar.polarsensordatacollector.ui.activity
 
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializer
@@ -29,10 +29,8 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Date
 import javax.inject.Inject
 
 internal data class ActivityRecordingDataDevConnectionState(
@@ -73,6 +71,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
     private val endDate = state.get<String>("activityEndDateFragmentArgument") ?: throw Exception("ActivityRecordingDataViewModel model requires end date")
     private val caloriesTypeString = state.get<String>("caloriesTypeArgument") ?: "ACTIVITY"
     private val caloriesType = CaloriesType.valueOf(caloriesTypeString)
+    var elapsedTime = 0L
 
     var activityDataUiState: ActivityDataUiState by mutableStateOf(ActivityDataUiState.IsFetching)
         private set
@@ -116,7 +115,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
     ) {
         Log.d(TAG, "fetchRecording $deviceId and type $activityRecordingType")
         viewModelScope.launch(Dispatchers.IO) {
-
+            val startTime = System.currentTimeMillis()
             when (activityRecordingType) {
                 PolarBleApi.PolarActivityDataType.SLEEP ->
                     when (val sleepRecording = polarDeviceStreamingRepository.getSleepData(deviceId, startDate, endDate)) {
@@ -132,6 +131,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                     .registerTypeAdapter(ZonedDateTime::class.java, JsonSerializer<ZonedDateTime> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(sleepRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -157,8 +157,9 @@ class ActivityRecordingDataViewModel @Inject constructor(
                     )) {
                         is ResultOfRequest.Success -> {
                             if (stepsRecording.value != null) {
+                                val gson = GsonBuilder().setPrettyPrinting().create()
                                 val fileUri = fileUtils.saveToFile(
-                                    Gson().toJson(stepsRecording.value).encodeToByteArray(),
+                                    gson.toJson(stepsRecording.value).encodeToByteArray(),
                                     "/STEPS/$startDate-steps.json"
                                 )
                                 val stepsRecording =  ActivityRecordingData(startDate.toString(), endDate.toString(), fileUri, PolarBleApi.PolarActivityDataType.STEPS)
@@ -181,8 +182,9 @@ class ActivityRecordingDataViewModel @Inject constructor(
                     )) {
                         is ResultOfRequest.Success -> {
                             if (caloriesRecording.value != null) {
+                                val gson = GsonBuilder().setPrettyPrinting().create()
                                 val fileUri = fileUtils.saveToFile(
-                                    Gson().toJson(caloriesRecording.value).encodeToByteArray(),
+                                    gson.toJson(caloriesRecording.value).encodeToByteArray(),
                                     "/CALORIES/$startDate-calories.json"
                                 )
                                 val caloriesRecordingData = ActivityRecordingData(startDate.toString(), endDate.toString(), fileUri, PolarBleApi.PolarActivityDataType.CALORIES)
@@ -199,8 +201,8 @@ class ActivityRecordingDataViewModel @Inject constructor(
                 PolarBleApi.PolarActivityDataType.HR_SAMPLES ->
                     when (val hrRecording = polarDeviceStreamingRepository.get247HrSamplesData(
                             deviceId,
-                            Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                            Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
+                            startDate,
+                            endDate
                     )) {
                         is ResultOfRequest.Success -> {
                             if (hrRecording.value != null) {
@@ -211,6 +213,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                     .registerTypeAdapter(LocalTime::class.java, JsonSerializer<LocalTime> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ISO_LOCAL_TIME))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(hrRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -239,6 +242,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                         .registerTypeAdapter(LocalDateTime::class.java, JsonSerializer<LocalDateTime> { src, _, _ ->
                                             JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd' 'HH:mm:ss")))
                                         })
+                                        .setPrettyPrinting()
                                         .create()
                                 val json = gson.toJson(nightlyRechargeRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -258,8 +262,8 @@ class ActivityRecordingDataViewModel @Inject constructor(
                 PolarBleApi.PolarActivityDataType.PPI_SAMPLES ->
                     when (val ppiRecording = polarDeviceStreamingRepository.get247PPiSamples (
                         deviceId,
-                        Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()),
-                        Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
+                        startDate,
+                        endDate
                     )) {
                         is ResultOfRequest.Success -> {
                             if (ppiRecording.value != null) {
@@ -270,6 +274,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                     .registerTypeAdapter(LocalDate::class.java, JsonSerializer<LocalDate> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ISO_LOCAL_DATE))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(ppiRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -296,6 +301,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                         .registerTypeAdapter(LocalDate::class.java, JsonSerializer<LocalDate> { src, _, _ ->
                                             JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
                                         })
+                                        .setPrettyPrinting()
                                         .create()
                                 val json = gson.toJson(skinTemperatureRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -325,6 +331,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                     .registerTypeAdapter(LocalDate::class.java, JsonSerializer<LocalDate> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(activeTimeRecording.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -344,13 +351,17 @@ class ActivityRecordingDataViewModel @Inject constructor(
 
                 PolarBleApi.PolarActivityDataType.ACTIVITY_SAMPLES ->
                     when (val activitySamplesData = polarDeviceStreamingRepository.getActivitySamplesData(
-                        deviceId, Date.from(startDate.atStartOfDay(ZoneId.systemDefault()).toInstant()), Date.from(endDate.atStartOfDay(ZoneId.systemDefault()).toInstant()))) {
+                        deviceId,
+                        startDate,
+                        endDate
+                    )) {
                         is ResultOfRequest.Success -> {
                             if (activitySamplesData.value != null) {
                                 val gson = GsonBuilder()
                                     .registerTypeAdapter(LocalDateTime::class.java, JsonSerializer<LocalDateTime> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS")))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(activitySamplesData.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -377,6 +388,7 @@ class ActivityRecordingDataViewModel @Inject constructor(
                                     .registerTypeAdapter(LocalDate::class.java, JsonSerializer<LocalDate> { src, _, _ ->
                                         JsonPrimitive(src?.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
                                     })
+                                    .setPrettyPrinting()
                                     .create()
                                 val json = gson.toJson(dailySummaryData.value)
                                 val fileUri = fileUtils.saveToFile(
@@ -393,9 +405,9 @@ class ActivityRecordingDataViewModel @Inject constructor(
                             activityDataUiState = ActivityDataUiState.Failure(dailySummaryData.message, dailySummaryData.throwable)
                         }
                     }
-
                 else -> { Log.d(TAG, "fetchRecording not implemented for $activityRecordingType") }
             }
+            elapsedTime = System.currentTimeMillis() - startTime
         }
     }
 

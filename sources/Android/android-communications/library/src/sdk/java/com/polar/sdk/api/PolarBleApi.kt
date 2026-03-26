@@ -2,6 +2,7 @@
 package com.polar.sdk.api
 
 import androidx.annotation.IntRange
+import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
 import com.polar.sdk.api.errors.PolarInvalidArgument
 import com.polar.sdk.api.model.*
 import fi.polar.remote.representation.protobuf.UserDeviceSettings.*
@@ -10,7 +11,8 @@ import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Single
 import java.time.LocalDate
-import java.util.*
+import java.time.LocalDateTime
+import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 import java.io.ByteArrayOutputStream
 
@@ -21,7 +23,8 @@ import java.io.ByteArrayOutputStream
  */
 abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineStreamingApi,
     PolarOfflineRecordingApi, PolarH10OfflineExerciseApi, PolarSdkModeApi, PolarFirmwareUpdateApi,
-    PolarActivityApi, PolarSleepApi, PolarRestServiceApi, PolarTemperatureApi, PolarTrainingSessionApi {
+    PolarActivityApi, PolarSleepApi, PolarRestServiceApi, PolarTemperatureApi, PolarTrainingSessionApi,
+    PolarBleLowLevelApi, PolarDeviceToHostNotificationsApi {
 
     /**
      * Features available in Polar BLE SDK library
@@ -58,6 +61,13 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
         FEATURE_POLAR_H10_EXERCISE_RECORDING,
 
         /**
+         * Offline Exercise V2 feature to record exercise data on supported devices using the Data Merge protocol.
+         * This feature enables offline exercise recording when the device is not connected.
+         * Requires device to support dm_exercise capability.
+         */
+        FEATURE_POLAR_OFFLINE_EXERCISE_V2,
+
+        /**
          * Feature to read and set device time in Polar device
          */
         FEATURE_POLAR_DEVICE_TIME_SETUP,
@@ -70,12 +80,12 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
 
         /**
          * Polar PFTP communication is required for Polar applications.
-        */
+         */
         FEATURE_POLAR_FILE_TRANSFER,
 
         /**
          * Health Thermometer client
-        */
+         */
         FEATURE_HTS,
 
         FEATURE_POLAR_LED_ANIMATION,
@@ -101,6 +111,16 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
         FEATURE_POLAR_TEMPERATURE_DATA,
 
         /**
+         * Feature to access training session data and exercise session controls.
+         */
+        FEATURE_POLAR_TRAINING_DATA,
+
+        /**
+         * Feature to control device power/reset behavior via device control notifications.
+         */
+        FEATURE_POLAR_DEVICE_CONTROL,
+
+        /**
          * Feature to read and set device configuration through Polar Features Configuration Service.
          */
         FEATURE_POLAR_FEATURES_CONFIGURATION_SERVICE
@@ -111,7 +131,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      */
     enum class PolarStoredDataType(val type: String) {
         ACTIVITY("ACT"),
-        AUTO_SAMPLE("AUTOS") ,
+        AUTO_SAMPLE("AUTOS"),
         DAILY_SUMMARY("DSUM"),
         NIGHTLY_RECOVERY("NR"),
         SDLOGS("SDLOGS"),
@@ -258,8 +278,24 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return rx Completable, complete invoked when nearby device found, and connection attempt started.
      * deviceConnecting callback invoked to inform connection attempt
      */
-    abstract fun autoConnectToDevice(rssiLimit: Int, service: String?, timeout: Int, unit: TimeUnit, polarDeviceType: String?): Completable
-    abstract fun autoConnectToDevice(rssiLimit: Int, service: String?, polarDeviceType: String?): Completable
+    abstract fun autoConnectToDevice(
+        rssiLimit: Int,
+        service: String?,
+        timeout: Int,
+        unit: TimeUnit,
+        polarDeviceType: String?
+    ): Completable
+
+    abstract fun autoConnectToDevice(
+        rssiLimit: Int,
+        service: String?,
+        polarDeviceType: String?
+    ): Completable
+
+    /**
+     * Fetch device BLE name from BLE session.
+     */
+    abstract fun getDeviceName(deviceId: String): String
 
     /**
      * Request a connection to a BLE device. Invokes [PolarBleApiCallback.deviceConnected] callback.
@@ -284,19 +320,31 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * Set the device time. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP]
      *
      * @param identifier polar device id or bt address
-     * @param calendar   time to set
+     * @param dateAndTime time to set
      * @return Completable stream
      */
-    abstract fun setLocalTime(identifier: String, calendar: Calendar): Completable
+    abstract fun setLocalTime(identifier: String, dateAndTime: LocalDateTime): Completable
 
     /**
      * Get current time in device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP].
      * Note, the H10 is not supporting time read.
      *
      * @param identifier polar device id or bt address
-     * @return Single observable which emits device time in Calendar instance when observable is subscribed
+     * @return Single observable which emits device time in LocalDateTime instance when observable is subscribed
+     * @deprecated Use [getLocalTimeWithZone] instead to also get timezone
      */
-    abstract fun getLocalTime(identifier: String): Single<Calendar>
+    @Deprecated("Use getLocalTimeWithZone() instead to also get timezone", ReplaceWith("getLocalTimeWithZone(identifier)"))
+    abstract fun getLocalTime(identifier: String): Single<LocalDateTime>
+
+    /**
+     * Get current time and timezone from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_TIME_SETUP].
+     * Note, the H10 is not supporting time read.
+     *
+     * @param identifier polar device id or bt address
+     * @return Single observable which emits device time as [ZonedDateTime] (including timezone offset)
+     * when observable is subscribed
+     */
+    abstract fun getLocalTimeWithZone(identifier: String): Single<ZonedDateTime>
 
     /**
      * Start listening the heart rate from Polar devices when subscribed. This observable listens BLE
@@ -313,7 +361,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun startListenForPolarHrBroadcasts(deviceIds: Set<String>?): Flowable<PolarHrBroadcastData>
 
     /**
-     * Get file as [ByteArray] from device.
+     * Get file as [ByteArray] from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_FILE_TRANSFER]
      *
      * @param identifier polar device id or bt address
      * @param path filesystem file path
@@ -322,7 +370,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun getFile(identifier: String, path: String): Single<ByteArray>
 
     /**
-     * Get [PolarDiskSpaceData] from device.
+     * Get [PolarDiskSpaceData] from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @return [Single] which emits [PolarDiskSpaceData]
@@ -330,26 +378,29 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun getDiskSpace(identifier: String): Single<PolarDiskSpaceData>
 
     /**
-     * Set [LedConfig] for device (Verity Sense 2.2.1+).
+     * Set [LedConfig] for device (Verity Sense 2.2.1+). Requires feature [PolarBleSdkFeature.FEATURE_POLAR_LED_ANIMATION]
      *
      * @param identifier Polar device ID or BT address
      * @param ledConfig new [LedConfig]
-     + @return [Completable] emitting success or error
+    + @return [Completable] emitting success or error
      */
     abstract fun setLedConfig(identifier: String, ledConfig: LedConfig): Completable
 
     /**
-     * Perform factory reset to given device.
+     * Perform factory reset to given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @param preservePairingInformation preserve pairing information during factory reset
      * @return [Completable] emitting success or error
      */
     @Deprecated("Use method doFactoryReset(identifier: String) instead.")
-    abstract fun doFactoryReset(identifier: String, preservePairingInformation: Boolean): Completable
+    abstract fun doFactoryReset(
+        identifier: String,
+        preservePairingInformation: Boolean
+    ): Completable
 
     /**
-     * Perform factory reset to given device.
+     * Perform factory reset to given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @return [Completable] emitting success or error
@@ -357,7 +408,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun doFactoryReset(identifier: String): Completable
 
     /**
-     * Perform restart device.
+     * Perform restart device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @return [Completable] emitting success or error
@@ -365,7 +416,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun doRestart(identifier: String): Completable
 
     /**
-     * Get [LogConfig] from device.
+     * Get [LogConfig] from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
     + @return [Single] emitting [LogConfig] or error
@@ -373,7 +424,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun getLogConfig(identifier: String): Single<LogConfig>
 
     /**
-     * Set [LogConfig] for device.
+     * Set [LogConfig] for device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @param logConfig new [LogConfig]
@@ -382,7 +433,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setLogConfig(identifier: String, logConfig: LogConfig): Completable
 
     /**
-     * Set warehouse sleep setting to a given device. Warehouse sleep does factory reset to the device
+     * Set warehouse sleep setting to a given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL] Warehouse sleep does factory reset to the device
      * and makes it sleep.
      *
      * @param identifier Polar device ID or BT address
@@ -391,7 +442,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setWareHouseSleep(identifier: String): Completable
 
     /**
-     * Turn of device by setting the device to sleep state.
+     * Turn of device by setting the device to sleep state. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @return [Completable] emitting success or error
@@ -399,7 +450,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun turnDeviceOff(identifier: String): Completable
 
     /**
-     * Configure the Polar device with first-time use settings and user identifier.
+     * Configure the Polar device with first-time use settings and user identifier. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or Bluetooth address.
      * @param ftuConfig Configuration data for the first-time use, encapsulated in [PolarFirstTimeUseConfig].
@@ -419,7 +470,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun doFirstTimeUse(identifier: String, ftuConfig: PolarFirstTimeUseConfig): Completable
 
     /**
-     * Check if the First Time Use has been done for the given device.
+     * Check if the First Time Use has been done for the given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or Bluetooth address.
      * @return [Single] emitting success with "true" or "false" response, or error.
@@ -430,7 +481,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun dumpAllFiles(identifier: String): Flowable<Pair<String, Long>>
 
     /**
-     * Get the user's physical data from the given device.
+     * Get the user's physical data from the given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or Bluetooth address
      * @return [Maybe] emitting [PolarPhysicalConfiguration] if available, null if FTU not done or error
@@ -438,17 +489,20 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun getUserPhysicalConfiguration(identifier: String): Maybe<PolarPhysicalConfiguration>
 
     /**
-     * Set [PolarUserDeviceSettings] for device.
+     * Set [PolarUserDeviceSettings] for device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address.
      * @param deviceUserSetting New [PolarUserDeviceSettings]
      * @return [Completable] emitting success or error.
      */
     @Deprecated("Use setting specific methods instead, e.g. setUserDeviceLocation()")
-    abstract fun setUserDeviceSettings(identifier: String, deviceUserSetting: PolarUserDeviceSettings): Completable
+    abstract fun setUserDeviceSettings(
+        identifier: String,
+        deviceUserSetting: PolarUserDeviceSettings
+    ): Completable
 
     /**
-     * Get [PolarUserDeviceSettings] from device.
+     * Get [PolarUserDeviceSettings] from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
     + @return [Single] emitting [PolarUserDeviceSettings] or error
@@ -456,7 +510,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun getUserDeviceSettings(identifier: String): Single<PolarUserDeviceSettings>
 
     /**
-     * Set the user device location on the device.
+     * Set the user device location on the device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address.
      * @param location The location to be set (usually an enum value representing the location).
@@ -465,7 +519,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setUserDeviceLocation(identifier: String, location: Int): Completable
 
     /**
-     * Set the USB connection mode on the device.
+     * Set the USB connection mode on the device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address.
      * @param enabled Whether to enable or disable USB connection mode.
@@ -474,7 +528,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setUsbConnectionMode(identifier: String, enabled: Boolean): Completable
 
     /**
-     * Set the automatic training detection settings on the device.
+     * Set the automatic training detection settings on the device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address.
      * @param automaticTrainingDetectionMode Whether the automatic training detection should be enabled or disabled.
@@ -490,7 +544,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     ): Completable
 
     /**
-     * Set the next Daylight Saving Time (DST) settings on the device in the current timezone.
+     * Set the next Daylight Saving Time (DST) settings on the device in the current timezone. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      * Gets the current timezone from the device and sets DST value based on that.
      *
      * @param identifier Polar device ID or BT address.
@@ -499,17 +553,21 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setDaylightSavingTime(identifier: String): Completable
 
     /**
-     * Delete data [PolarStoredDataType] from a device. Note that you will need to await for completion.
+     * Delete data [PolarStoredDataType] from a device. Note that you will need to await for completion. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier, Polar device ID or BT address
      * @param dataType, [PolarStoredDataType] A specific data type that shall be deleted
      * @param until, Data will be deleted from device from history until this date.
      * @return [Flowable] success with the paths of the deleted data or error
      */
-    abstract fun deleteStoredDeviceData(identifier: String, dataType: PolarStoredDataType, until: LocalDate?): Completable
+    abstract fun deleteStoredDeviceData(
+        identifier: String,
+        dataType: PolarStoredDataType,
+        until: LocalDate?
+    ): Completable
 
     /**
-     * Enable or disable telemetry (trace logging / diagnostics) on the device.
+     * Enable or disable telemetry (trace logging / diagnostics) on the device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier Polar device ID or BT address
      * @param enabled true = telemetry on, false = off
@@ -527,18 +585,24 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
 
     /**
      * Deletes device day (YYYMMDD) folders from the given date range from a device.
+     * Deletes device day (YYYMMDD) folders from the given date range from a device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      * The date range is inclusive.
      * Deletes the day folder (plus all sub-folders with any contents).
+     * If date directories are not found for the given date range the operation is still successful and no error is emitted.
      *
      * @param identifier, Polar device ID or BT address
      * @param fromDate The starting date to delete date folders from
      * @param toDate The ending date of last date to delete folders from
      * @return [Completable] emitting success or error
      */
-    abstract fun deleteDeviceDateFolders(identifier: String, fromDate: LocalDate?, toDate: LocalDate?): Completable
+    abstract fun deleteDeviceDateFolders(
+        identifier: String,
+        fromDate: LocalDate?,
+        toDate: LocalDate?
+    ): Completable
 
     /**
-     * Deletes all telemetry data files from a device
+     * Deletes all telemetry data files from a device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      *
      * @param identifier, Polar device ID or BT address
      * @return [Completable] emitting success or error
@@ -555,7 +619,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun waitForConnection(identifier: String): Completable
 
     /**
-     * Enable multi BLE connection mode on a given device.
+     * Enable multi BLE connection mode on a given device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_FEATURES_CONFIGURATION_SERVICE]
      *
      * @param identifier Polar device ID or BT address
      * @param enable, set to true to enable, false to disable multi BLE connection mode.
@@ -564,7 +628,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun setMultiBLEConnectionMode(identifier: String, enable: Boolean): Completable
 
     /**
-     * Request multi BLE connection mode status from device.
+     * Request multi BLE connection mode status from device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_FEATURES_CONFIGURATION_SERVICE]
      *
      * @param identifier Polar device ID or BT address
      * @return [Single], true if multi BLE connection has been enabled, false otherwise.
@@ -575,6 +639,9 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * Notify device of the incoming data transfer operation(s). By using this method the device will
      * handle data transfer operations more efficiently by setting it to faster data transfer mode.
      * It also will cause the device to flush the latest data to files giving you the most up-to-date data.
+     * Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
+     * handle data transfer operations more efficiently by setting it to faster data transfer mode.
+     * It also will cause the device to flush the latest data to files giving you the most up-to-date data.
      *
      * @param identifier Polar device ID or BT address
      * @return [Single], true if start sync notifications sending was successful, false otherwise.
@@ -582,7 +649,7 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
     abstract fun sendInitializationAndStartSyncNotifications(identifier: String): Single<Boolean>
 
     /**
-     * Notify device that data transfer operations are completed.
+     * Notify device that data transfer operations are completed. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
      * By calling this API device will set itself back to normal data transfer mode that will use
      * less battery.
      *
@@ -590,4 +657,35 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      * @return [Completable], true if stop sync notifications sending was successful, false otherwise.
      */
     abstract fun sendTerminateAndStopSyncNotifications(identifier: String): Completable
+
+    /**
+     * Enable or disable AUTOS file generation on the device. Requires feature [PolarBleSdkFeature.FEATURE_POLAR_DEVICE_CONTROL]
+     * AUTOS files contain 24/7 OHR data.
+     * Status of this setting can be read with getUserDeviceSettings().
+     *
+     * @param identifier Polar device ID or BT address
+     * @param enabled true = AUTOS files enabled, false = disabled
+     * @return Completable (success or error)
+     */
+    abstract fun setAutomaticOHRMeasurementEnabled(
+        identifier: String,
+        enabled: Boolean
+    ): Completable
+
+    /**
+     * Request last observed battery level value from device. Requires feature [PolarBleSdkFeature.FEATURE_BATTERY_INFO]
+     *
+     * @param identifier Polar device ID or BT address
+     * @return Level of battery level percentage 0 - 100%.
+     * Will return -1 if battery level is not available.
+     */
+    abstract fun getBatteryLevel(identifier: String): Int
+
+    /**
+     * Request last observed charging status value from device. Requires feature [PolarBleSdkFeature.FEATURE_BATTERY_INFO]
+     *
+     * @param identifier Polar device ID or BT address
+     * @return [ChargeState] value indicating the last observed charging status of the device.
+     */
+    abstract fun getChargerState(identifier: String): ChargeState
 }

@@ -12,18 +12,11 @@ import UserNotifications
 /// See PolarBleDeviceManager for scanning connectable devices
 /// 
 class PolarBleSdkManager : ObservableObject {
-    // NOTICE this example utilises all available features
-    private var api = PolarBleApiDefaultImpl.polarImplementation(DispatchQueue.main,
-                                                                 features: [PolarBleSdkFeature.feature_hr,
-                                                                            PolarBleSdkFeature.feature_polar_sdk_mode,
-                                                                            PolarBleSdkFeature.feature_battery_info,
-                                                                            PolarBleSdkFeature.feature_device_info,
-                                                                            PolarBleSdkFeature.feature_polar_online_streaming,
-                                                                            PolarBleSdkFeature.feature_polar_offline_recording,
-                                                                            PolarBleSdkFeature.feature_polar_device_time_setup,
-                                                                            PolarBleSdkFeature.feature_polar_h10_exercise_recording,
-                                                                            PolarBleSdkFeature.feature_polar_features_configuration_service]
-    )
+    
+    // NOTICE this example requests all available features. To initialize
+    // only selected SDK features, list the features in features array, e.g.:
+    // features: [.feature_hr,.feature_polar_device_control]
+    private var api = PolarBleApiDefaultImpl.polarImplementation(DispatchQueue.main,features: [])
     
     var connectedDevices: [(PolarDeviceInfo, Disposable?)] = []
     var updatingDevices:[PolarDeviceInfo] = []
@@ -58,6 +51,8 @@ class PolarBleSdkManager : ObservableObject {
     @Published var activityRecordingData: ActivityRecordingData = ActivityRecordingData()
     @Published var onlineRecordingDataTypes: [PolarDeviceDataType] = []
     
+    @Published var offlineExerciseV2Feature = OfflineExerciseV2Feature()
+
     @Published var deviceTimeSetupFeature: DeviceTimeSetupFeature = DeviceTimeSetupFeature()
     
     @Published var sdkModeFeature: SdkModeFeature = SdkModeFeature()
@@ -95,13 +90,29 @@ class PolarBleSdkManager : ObservableObject {
     
     @Published var userDeviceSettings: UserDeviceSettingsFeature
     @Published var multiBleFeature: MultiBleFeature = MultiBleFeature()
+    
+    @Published var genericApiFileList: [String] = []
+    @Published var genericApiFileData: Data = Data()
 
     private var exerciseRefreshTimer: DispatchSourceTimer?
     private var broadcastDisposable: Disposable?
     private var autoConnectDisposable: Disposable?
     private var onlineStreamingDisposables: [PolarDeviceDataType: Disposable?] = [:]
     private var exerciseNotificationDisposable: Disposable?
+    private var sleepObserverDisposable: Disposable?
     
+    @Published var deviceToHostNotificationDisposable: Disposable?
+    @Published var deviceToHostNotificationInfo: (String, PolarDeviceToHostNotification, Data, Any?)?
+    
+    @Published var batteryChargeLevel = -1
+    @Published var deviceChargeStatus = BleBasClient.ChargeState.unknown
+    @Published var rssi: Any = "N/A"
+    @Published var didDisconnect = false
+    
+    @Published var offlineExerciseV2Supported: Bool = false
+    @Published var offlineExerciseV2Entries: [PolarExerciseEntry] = []
+    @Published var offlineExerciseV2Status: Bool = false
+
     private let disposeBag = DisposeBag()
     private var h10ExerciseEntry: PolarExerciseEntry?
     
@@ -109,6 +120,8 @@ class PolarBleSdkManager : ObservableObject {
     
     private let encoder = JSONEncoder()
     private let dateFormatter = DateFormatter()
+
+    @Published var elapsedTimeToast: String? = nil
     
     init() {
         self.isBluetoothOn = api.isBlePowered
@@ -229,13 +242,6 @@ extension PolarBleSdkManager {
         
         self.switchableDevices = self.connectedDevices.compactMap { (device, disposable) in
             return device.deviceId != self.deviceId ? device : nil
-        }
-        
-        if checkFirmwareUpdateNeeded() {
-            Task {
-                sleep(3) // TODO: remove need for sleeping
-                await checkFirmwareUpdate()
-            }
         }
     }
     
@@ -579,6 +585,13 @@ extension PolarBleSdkManager {
             dataType == feature
         }
         onlineStreamingDisposables[feature]??.dispose()
+        
+        if feature == .hr {
+            HrDataHolder.shared.clear()
+        }
+        if feature == .acc {
+            AccDataHolder.shared.clear()
+        }
     }
     
     func listOfflineRecordings() async {
@@ -896,10 +909,11 @@ extension PolarBleSdkManager {
                         self.closeOnlineStreamLogFile(fileHandle)
                     }
                     Task { @MainActor in
-                        self.onlineStreamingFeature.isStreaming[.acc] = OnlineStreamingState.success(url: logFile?.url)
+                        self.onlineStreamingFeature.isStreaming[.acc] =
+                            OnlineStreamingState.success(url: logFile?.url)
                     }
                 })
-                .subscribe{ e in
+                .subscribe { e in
                     switch e {
                     case .next(let data):
                         if let fileHandle = logFile?.fileHandle {
@@ -909,10 +923,18 @@ extension PolarBleSdkManager {
                             NSLog("ACC    x: \(item.x) y: \(item.y) z: \(item.z) timeStamp: \(item.timeStamp)")
                         }
                         Task { @MainActor in
+                            for sample in data {
                             self.accRecordingData.x = data.last!.x
                             self.accRecordingData.y = data.last!.y
                             self.accRecordingData.z = data.last!.z
                             self.accRecordingData.timestamp = data.last!.timeStamp
+
+                                AccDataHolder.shared.updateAcc(
+                                    x: sample.x,
+                                    y: sample.y,
+                                    z: sample.z
+                                )
+                            }
                         }
                     case .error(let err):
                         NSLog("ACC stream failed: \(err)")
@@ -1124,12 +1146,12 @@ extension PolarBleSdkManager {
                             }
                             
                             for item in data.samples {
-                                NSLog("PPG  ppg0: \(item.channelSamples[0]) ppg1: \(item.channelSamples[1]) status: \(item.channelSamples[2]) timeStamp: \(item.timeStamp)")
+                                NSLog("PPG  ppg0: \(item.channelSamples[0]) ppg1: \(item.channelSamples[1]) status: \(String(describing: item.statusBits)) timeStamp: \(item.timeStamp)")
                             }
                             Task { @MainActor in
                                 self.ppgRecordingData.ppg0 = data.samples[0].channelSamples[0]
                                 self.ppgRecordingData.ppg1 = data.samples[0].channelSamples[1]
-                                self.ppgRecordingData.status = data.samples[0].channelSamples[2]
+                                self.ppgRecordingData.status = data.samples[0].statusBits
                             }
                         }
                     case .error(let err):
@@ -1225,6 +1247,8 @@ extension PolarBleSdkManager {
                             self.hrRecordingData.rrAvailable = data[0].rrAvailable
                             self.hrRecordingData.contactStatus = data[0].contactStatus
                             self.hrRecordingData.contactStatusSupported = data[0].contactStatusSupported
+                            
+                            HrDataHolder.shared.updateHr(Int(data[0].hr))
                         }
                     case .error(let err):
                         NSLog("Hr stream failed: \(err)")
@@ -1440,10 +1464,17 @@ extension PolarBleSdkManager {
         }
     }
     
+    func getOfflineExerciseV2Status() async {
+        guard case .connected(let device) = deviceConnectionState else { return }
+
+        let isReady = api.isFeatureReady(device.deviceId, feature: .feature_polar_offline_exercise_v2)
+        offlineExerciseV2Feature.isSupported = isReady
+    }
+
     func listH10Exercises() {
         if case .connected(let device) = deviceConnectionState {
             h10ExerciseEntry = nil
-            api.fetchStoredExerciseList(device.deviceId)
+            api.listExercises(device.deviceId)
                 .observe(on: MainScheduler.instance)
                 .subscribe{ e in
                     switch e {
@@ -1930,35 +1961,35 @@ extension PolarBleSdkManager {
                         case .fetchingFwUpdatePackage(let details):
                             let message = "fetchingFwUpdatePackage: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Fetching firmware", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Fetching firmware", body: details)
                             self.updatingDevices.append(device)
                         case .preparingDeviceForFwUpdate(let details):
                             let message = "preparingDeviceForFwUpdate: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Preparing device for update", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Preparing device for update", body: details)
                         case .writingFwUpdatePackage(let details):
                             let message = "writingFwUpdatePackage: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Writing firmware to device", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Writing firmware to device", body: details)
                         case .finalizingFwUpdate(let details):
                             let message = "finalizingFwUpdate: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Finalizing update", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Finalizing update", body: details)
                         case .fwUpdateCompletedSuccessfully(let details):
                             let message = "fwUpdateCompletedSuccessfully: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Firmware update complete", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Firmware update complete", body: details)
                             self.firmwareUpdateFeature.inProgress = false
                             await self.checkFirmwareUpdate()
                         case .fwUpdateNotAvailable(let details):
                             let message = "fwUpdateNotAvailable: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Firmware update not available", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Firmware update not available", body: details)
                             self.firmwareUpdateFeature.inProgress = false
                         case .fwUpdateFailed(let details):
                             let message = "fwUpdateFailed: \(details)"
                             self.firmwareUpdateFeature.status = message
-                            self.showFWUNotification(id: badgeId, title: "Firmware update failed", body: details)
+                            self.showUNUserNotification(id: badgeId, title: "Firmware update failed", body: details)
                             self.firmwareUpdateFeature.inProgress = false
                         }
                     }
@@ -2029,7 +2060,7 @@ extension PolarBleSdkManager {
     func getSleep(start: Date, end: Date) async {
         if case .connected(let device) = deviceConnectionState {
             do {
-                let sleepData = try await api.getSleepData(identifier: device.deviceId, fromDate: start, toDate: end).value
+                let sleepData = try await api.getSleep(identifier: device.deviceId, fromDate: start, toDate: end).value
                 Task {@MainActor in
                     if (!sleepData.isEmpty) {
                         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
@@ -2166,7 +2197,7 @@ extension PolarBleSdkManager {
     func getActivitySamplesData(start: Date, end: Date) async {
         if case .connected(let device) = deviceConnectionState {
             do {
-                dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
                 encoder.dateEncodingStrategy = .formatted(dateFormatter)
                 let activitySamplesData = try await api.getActivitySampleData(identifier: device.deviceId, fromDate: start, toDate: end).value
                 Task {@MainActor in
@@ -2187,7 +2218,7 @@ extension PolarBleSdkManager {
     func getDailySummaryData(start: Date, end: Date) async {
         if case .connected(let device) = deviceConnectionState {
             do {
-                dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
                 encoder.dateEncodingStrategy = .formatted(dateFormatter)
                 let dailySummaryData = try await api.getDailySummaryData(identifier: device.deviceId, fromDate: start, toDate: end).value
                 Task {@MainActor in
@@ -2335,10 +2366,11 @@ extension PolarBleSdkManager {
             }
         }
     }
-
+    
     func observeSleepRecordingState() {
         if case .connected(let device) = deviceConnectionState {
-            api.observeSleepRecordingState(identifier: device.deviceId)
+            sleepObserverDisposable?.dispose()
+            sleepObserverDisposable = api.observeSleepRecordingState(identifier: device.deviceId)
                 .observe(on: MainScheduler.instance)
                 .subscribe { e in
                     switch e {
@@ -2352,7 +2384,8 @@ extension PolarBleSdkManager {
                     case .completed:
                         NSLog("observeSleepRecordingSettings completed")
                     }
-                }.disposed(by: disposeBag)
+                }
+            sleepObserverDisposable?.disposed(by: disposeBag)
         }
     }
     
@@ -2620,6 +2653,22 @@ extension PolarBleSdkManager {
             }
         }
     }
+    
+    func setAutomaticOHRMeasurementEnabled(enabled: Bool) async {
+            if case .connected(let device) = deviceConnectionState {
+                do {
+                    try await withCheckedThrowingContinuation { continuation in
+                        _ = api.setAutomaticOHRMeasurementEnabled(device.deviceId, enabled: enabled)
+                            .subscribe(
+                                onCompleted: { continuation.resume() },
+                                onError: { continuation.resume(throwing: $0) }
+                            )
+                    }
+                } catch {
+                    NSLog("Failed to set automatic OHR measurement state: \(error.localizedDescription)")
+                }
+            }
+        }
 
     func setDaylightSavingTime() async {
         if case .connected(let device) = deviceConnectionState {
@@ -2636,7 +2685,7 @@ extension PolarBleSdkManager {
             }
         }
     }
-
+    
     private func somethingFailed(text: String) {
         self.generalMessage = Message(text: "Error: \(text)")
         NSLog("Error \(text)")
@@ -2675,7 +2724,7 @@ extension PolarBleSdkManager {
         case .ppg1:
             result =  "TIMESTAMP SPORT_ID\n"
         case .ppg2:
-            result =  "TIMESTAMP PPG0 PPG1 Status\n"
+            result =  "TIMESTAMP PPG0 PPG1 STATUS0 STATUS1\n"
         case .ppg3:
             result =  "TIMESTAMP PPG0 PPG1 PPG2\n"
         case .ppg3_ambient1:
@@ -2703,19 +2752,77 @@ extension PolarBleSdkManager {
             result +=  polarMagnetometerData.map{ "\($0.timeStamp) \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
         case let polarPpgData as PolarPpgData:
             if polarPpgData.type == PpgDataType.ppg1 {
-                result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0])" }.joined(separator: "\n")
+                result += polarPpgData.samples.map { sample -> String in
+                    var line = "\(sample.timeStamp)"
+                    if sample.channelSamples.count >= 1 {
+                        line += " \(sample.channelSamples[0])"
+                    } else {
+                        BleLogger.trace("PPG1 sample incomplete - channels: \(sample.channelSamples.count)")
+                    }
+                    return line
+                }.joined(separator: "\n")
             }
             if polarPpgData.type == PpgDataType.ppg3 {
-                result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0]) \($0.channelSamples[1]) \($0.channelSamples[2])" }.joined(separator: "\n")
+                result += polarPpgData.samples.map { sample -> String in
+                    var line = "\(sample.timeStamp)"
+                    for i in 0..<min(3, sample.channelSamples.count) {
+                        line += " \(sample.channelSamples[i])"
+                    }
+                    if sample.channelSamples.count < 3 {
+                        BleLogger.trace("PPG3 sample incomplete - channels: \(sample.channelSamples.count)")
+                    }
+                    return line
+                }.joined(separator: "\n")
             }
             if polarPpgData.type == PpgDataType.ppg3_ambient1 {
-                result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0]) \($0.channelSamples[1]) \($0.channelSamples[2]) \($0.channelSamples[3])" }.joined(separator: "\n")
+                result += polarPpgData.samples.map { sample -> String in
+                    var line = "\(sample.timeStamp)"
+                    for i in 0..<min(4, sample.channelSamples.count) {
+                        line += " \(sample.channelSamples[i])"
+                    }
+                    if sample.channelSamples.count < 4 {
+                        BleLogger.trace("PPG3_ambient1 sample incomplete - channels: \(sample.channelSamples.count)")
+                    }
+                    return line
+                }.joined(separator: "\n")
             }
             if polarPpgData.type == PpgDataType.ppg21 {
-                result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0]) \($0.channelSamples[1]) \($0.channelSamples[2]) \($0.channelSamples[3]), \($0.channelSamples[4]) \($0.channelSamples[5]) \($0.channelSamples[6]) \($0.channelSamples[7]) \($0.channelSamples[8]) \($0.channelSamples[9]) \($0.channelSamples[10]) \($0.channelSamples[11]) \($0.channelSamples[12]) \($0.channelSamples[13]) \($0.channelSamples[14]) \($0.channelSamples[15]) \($0.channelSamples[16]) \($0.channelSamples[17]) \($0.channelSamples[18]) \($0.channelSamples[19])" }.joined(separator: "\n")
+                result += polarPpgData.samples.map { sample -> String in
+                    var line = "\(sample.timeStamp)"
+                    // Add available channel samples (up to 20)
+                    for i in 0..<min(20, sample.channelSamples.count) {
+                        line += " \(sample.channelSamples[i])"
+                    }
+                    // Add available status bits (up to 20)
+                    if let statusBits = sample.statusBits {
+                        for i in 0..<min(20, statusBits.count) {
+                            line += " \(statusBits[i])"
+                        }
+                    }
+                    if sample.channelSamples.count < 20 || sample.statusBits == nil || sample.statusBits!.count < 20 {
+                        BleLogger.trace("PPG21 sample incomplete - channels: \(sample.channelSamples.count), statusBits: \(sample.statusBits?.count ?? 0)")
+                    }
+                    return line
+                }.joined(separator: "\n")
             }
             if polarPpgData.type == PpgDataType.ppg2 {
-                result += polarPpgData.samples.map{ "\($0.timeStamp) \($0.channelSamples[0]) \($0.channelSamples[1]) \($0.channelSamples[2])" }.joined(separator: "\n")
+                result += polarPpgData.samples.map { sample -> String in
+                    var line = "\(sample.timeStamp)"
+                    // Add available channel samples (up to 2)
+                    for i in 0..<min(2, sample.channelSamples.count) {
+                        line += " \(sample.channelSamples[i])"
+                    }
+                    // Add available status bits (up to 2)
+                    if let statusBits = sample.statusBits {
+                        for i in 0..<min(2, statusBits.count) {
+                            line += " \(statusBits[i])"
+                        }
+                    }
+                    if sample.channelSamples.count < 2 || sample.statusBits == nil || sample.statusBits!.count < 2 {
+                        BleLogger.trace("PPG2 sample incomplete - channels: \(sample.channelSamples.count), statusBits: \(sample.statusBits?.count ?? 0)")
+                    }
+                    return line
+                }.joined(separator: "\n")
             }
         case let polarPpiData as PolarPpiData:
             result += polarPpiData.samples.map{ "\($0.timeStamp) \($0.ppInMs) \($0.hr) \($0.ppErrorEstimate) \($0.blockerBit) \($0.skinContactSupported) \($0.skinContactStatus)" }.joined(separator: "\n")
@@ -2932,6 +3039,357 @@ extension PolarBleSdkManager {
             startObservingExerciseNotifications()
         }
     }
+    
+    func startObservingDeviceToHostNotifications() {
+        
+        guard case .connected(let device) = deviceConnectionState else { return }
+        
+        let deviceId = device.deviceId
+        let badgeId = "D2H-\(deviceId)"
+        let title = "Device \(deviceId)"
+        
+        deviceToHostNotificationDisposable?.dispose()
+        
+        deviceToHostNotificationDisposable = api.observeDeviceToHostNotifications(identifier: deviceId)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onNext: { [weak self] notificationData in
+                    let paramDescription = notificationData.parsedParameters != nil ? String(describing: notificationData.parsedParameters!) : "none"
+                    let details = "\(notificationData.notificationType) with \(notificationData.parameters.count) bytes, param: \(paramDescription)"
+                    BleLogger.trace("PSDC: Device to host notification received: \(details)")
+                    self?.showUNUserNotification(id: badgeId, title: title, body: details)
+
+                },
+                onError: { [weak self] error in
+                    let details = "Device to host notification receiving from device \(device.deviceId) failed with error \(error)"
+                    BleLogger.trace("PSDC: \(details)")
+                    self?.showUNUserNotification(id: badgeId, title: title, body: details)
+                    self?.stopObservingExerciseNotifications()
+                },
+                onCompleted: { [weak self] in
+                    BleLogger.trace("PSDC: Device to host notification observing completed")
+                    self?.stopObservingExerciseNotifications()
+                }
+            )
+    }
+
+    func stopObservingDeviceToHostNotifications() {
+        deviceToHostNotificationDisposable?.dispose()
+        deviceToHostNotificationDisposable = nil
+    }
+        
+    func toggleDeviceToHostNotificationObservation() {
+        if deviceToHostNotificationDisposable != nil {
+            stopObservingDeviceToHostNotifications()
+        } else {
+            startObservingDeviceToHostNotifications()
+        }
+    }
+    
+    func getBatteryChargeLevel() throws {
+        if case .connected(let device) = deviceConnectionState {
+            self.batteryChargeLevel = try api.getBatteryLevel(identifier: device.deviceId)
+        }
+    }
+
+    func getChargeStatus() throws {
+        if case .connected(let device) = deviceConnectionState {
+            self.deviceChargeStatus = try api.getChargerState(identifier: device.deviceId)
+        }
+    }
+
+    // PolarBleSdkManager methods for generic low level API.
+    func listFiles(directoryPath: String, recurseDeep: Bool = false) async throws {
+        if case .connected(let device) = deviceConnectionState {
+            let fileList = try await api.getFileList(identifier: device.deviceId, directoryPath: directoryPath, recurseDeep: recurseDeep).value
+            Task { @MainActor in
+                if (fileList.isEmpty) {
+                    NSLog("No files found for path \(directoryPath)")
+                } else {
+                    genericApiFileList.append(contentsOf: fileList)
+                }
+            }
+        }
+    }
+
+    func readFile(filePath: String) async throws {
+        if case .connected(let device) = deviceConnectionState {
+            let fileData = try await api.readFile(identifier: device.deviceId, filePath: filePath).value
+            Task { @MainActor in
+                if (fileData == nil) {
+                    NSLog("No file data found for path \(filePath)")
+                } else {
+                    genericApiFileData = fileData ?? Data()
+                }
+            }
+        }
+    }
+
+    func writeFile(filePath: String, fileData: Data) async throws {
+        if case .connected(let device) = deviceConnectionState {
+            try await api.writeFile(identifier: device.deviceId, filePath: filePath, fileData: fileData).value
+        }
+    }
+
+    func deleteFile(filePath: String) async throws {
+        if case .connected(let device) = deviceConnectionState {
+            try await api.deleteFileOrDirectory(identifier: device.deviceId, filePath: filePath).value
+        }
+    }
+
+    func getRSSIValue() {
+        if case .connected(let device) = deviceConnectionState {
+            do {
+                rssi = try api.getRSSIValue(device.deviceId)
+            } catch {
+                NSLog("Failed to get RSSI value: \(error)")
+            }
+        }
+    }
+
+    func checkIfDeviceDisconnectedDueToRemovedPairing() {
+        if case .connected(let device) = deviceConnectionState {
+            do {
+                didDisconnect = try api.checkIfDeviceDisconnectedDueRemovedPairing(device.deviceId)
+            } catch {
+                NSLog("Failed to get check if device did disconnect due to removed pairing: \(error)")
+            }
+        }
+    }
+
+    func startOfflineExerciseV2()
+    -> Single<OfflineExerciseStartResult> {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            return Single.error(NSError(domain: "Device not connected", code: -1))
+        }
+
+        offlineExerciseV2Status = false
+
+        return api.startOfflineExerciseV2(
+            identifier: device.deviceId
+        )
+        .do(onSuccess: { [weak self] result in
+
+            self?.offlineExerciseV2Status = (result.result == .success)
+        }, onError: { error in
+            NSLog("Start Offline Exercise V2 failed: \(error)")
+        })
+    }
+
+    func stopOfflineExerciseV2()
+    -> Completable {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            return Completable.error(NSError(domain: "Device not connected", code: -1))
+        }
+
+        return api.stopOfflineExerciseV2(identifier: device.deviceId)
+            .do(onError: { error in
+                NSLog("Stop Offline Exercise V2 failed: \(error)")
+            }, onCompleted: { [weak self] in
+
+                self?.offlineExerciseV2Status = false
+            })
+    }
+
+    func listOfflineExercisesV2() {
+
+        guard case .connected(let device) = deviceConnectionState else { return }
+
+        genericApiFileList.removeAll()
+        offlineExerciseV2Entries.removeAll()
+
+        api.listOfflineExercisesV2(
+            identifier: device.deviceId
+        )
+        .observe(on: MainScheduler.instance)
+        .subscribe(
+            onNext: { [weak self] entry in
+                self?.genericApiFileList.append(entry.path)
+                self?.offlineExerciseV2Entries.append(entry)
+            },
+            onError: { error in
+                if self.isSystemBusy(error: error) {
+                    NSLog("listOfflineExercisesV2(), device busy (exercise running)")
+                } else {
+                    NSLog("listOfflineExercisesV2 failed: \(error)")
+                }
+            }
+        )
+        .disposed(by: disposeBag)
+    }
+
+    func readOfflineExerciseV2() async -> PolarExerciseData? {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            NSLog("readOfflineExerciseV2 failed, device not connected")
+            return nil
+        }
+
+        guard let entryPath = genericApiFileList.first else {
+            NSLog("readOfflineExerciseV2 failed, no entry found")
+            return nil
+        }
+
+        let entry = PolarExerciseEntry(
+            path: entryPath,
+            date: Date(),
+            entryId: URL(fileURLWithPath: entryPath).lastPathComponent
+        )
+
+        do {
+
+            let data = try await api
+                .fetchOfflineExerciseV2(
+                    identifier: device.deviceId,
+                    entry: entry
+                )
+                .value
+
+            return data
+
+        } catch {
+            NSLog("readOfflineExerciseV2 failed: \(error)")
+            return nil
+        }
+    }
+
+    func getOfflineExerciseStatusV2() {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            NSLog("getOfflineExerciseStatusV2 failed – device not connected")
+            return
+        }
+
+        api.getOfflineExerciseStatusV2(identifier: device.deviceId)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onSuccess: { [weak self] isRunning in
+
+                    Task { @MainActor in
+                        self?.offlineExerciseV2Status = isRunning
+                    }
+
+                },
+                onFailure: { [weak self] error in
+
+                    if let self = self, self.isSystemBusy(error: error) {
+
+                        Task { @MainActor in
+                            self.offlineExerciseV2Status = true
+                        }
+
+                    } else {
+                        NSLog("getOfflineExerciseStatusV2 failed: \(error)")
+                    }
+                }
+            )
+            .disposed(by: disposeBag)
+    }
+
+    func removeOfflineExerciseV2()
+    -> Completable {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            return Completable.error(NSError(domain: "Device not connected", code: -1))
+        }
+
+        guard let entryPath = genericApiFileList.first else {
+            return Completable.error(NSError(
+                domain: "No exercise entry selected",
+                code: -2
+            ))
+        }
+
+        let entry = PolarExerciseEntry(
+            path: entryPath,
+            date: Date(),
+            entryId: URL(fileURLWithPath: entryPath).lastPathComponent
+        )
+
+        offlineExerciseV2Status = false
+
+        return api.removeOfflineExerciseV2(
+            identifier: device.deviceId,
+            entry: entry
+        )
+        .do(onError: { [weak self] error in
+
+            if let self = self, self.isSystemBusy(error: error) {
+
+                Task { @MainActor in
+                    self.offlineExerciseV2Status = true
+                }
+
+            } else {
+                NSLog("removeOfflineExerciseV2 failed: \(error)")
+            }
+        }, onCompleted: { [weak self] in
+
+            Task { @MainActor in
+                self?.genericApiFileList.removeAll()
+                self?.offlineExerciseV2Entries.removeAll()
+            }
+
+        })
+    }
+
+    func checkOfflineExerciseV2Support() {
+
+        guard case .connected(let device) = deviceConnectionState else {
+            NSLog("checkOfflineExerciseV2Support, no device connected, skipping V2 exercise capability check")
+            offlineExerciseV2Supported = false
+            return
+        }
+
+        api.isOfflineExerciseV2Supported(identifier: device.deviceId)
+            .observe(on: MainScheduler.instance)
+            .subscribe(
+                onSuccess: { [weak self] supported in
+                    NSLog("checkOfflineExerciseV2Support, capability result received: \(supported)")
+                    self?.offlineExerciseV2Supported = supported
+                },
+                onFailure: { [weak self] error in
+                    NSLog("V2 exercise capability check failed: \(error)")
+                    self?.offlineExerciseV2Supported = false
+                }
+            )
+            .disposed(by: disposeBag)
+    }
+
+    func fetchAndExportOfflineExerciseV2() async throws -> URL {
+
+        guard let entryPath = offlineExerciseV2Entries.first?.path,
+              case .connected(let device) = deviceConnectionState else {
+            throw NSError(domain: "NoDeviceOrEntry", code: -1)
+        }
+
+        let entry = PolarExerciseEntry(
+            path: entryPath,
+            date: Date(),
+            entryId: URL(fileURLWithPath: entryPath).lastPathComponent
+        )
+
+        let data = try await api
+            .fetchOfflineExerciseV2(identifier: device.deviceId, entry: entry)
+            .value
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Polar_offline_exercise_export.txt")
+
+        let text = "Samples:\(data.samples)"
+
+        try text.write(to: tempURL, atomically: true, encoding: .utf8)
+
+        return tempURL
+    }
+
+
+    private func isSystemBusy(error: Error) -> Bool {
+        let msg = error.localizedDescription.uppercased()
+        return msg.contains("202") || msg.contains("SYSTEM_BUSY")
+    }
 }
 
 fileprivate extension PolarDeviceDataType {
@@ -3012,6 +3470,7 @@ extension PolarBleSdkManager : PolarBleApiObserver {
         Task { @MainActor in
             self.disconnectedDevicesPairingErrors.removeValue(forKey: device.deviceId)
             self.updateStateWhenDeviceConnected(device: device)
+            self.checkOfflineExerciseV2Support()
         }
     }
     
@@ -3062,11 +3521,12 @@ extension PolarBleSdkManager : PolarBleApiDeviceInfoObserver {
 
 // MARK: - PolarBleApiDeviceFeaturesObserver
 extension PolarBleSdkManager : PolarBleApiDeviceFeaturesObserver {
-    func bleSdkFeatureReady(_ identifier: String, feature: PolarBleSdk.PolarBleSdkFeature) {
-        NSLog("Feature is ready: \(feature)")
-        switch(feature) {
 
-        case .feature_hr:
+    func bleSdkFeaturesReadiness(_ identifier: String, ready: [PolarBleSdkFeature], unavailable: [PolarBleSdkFeature]) {
+        
+        // Initialize SDK feature dependent PSDC features:
+        
+        if ready.contains(.feature_hr) {
             Task { @MainActor in
                 self.onlineStreamingFeature.isSupported = true
             }
@@ -3083,47 +3543,46 @@ extension PolarBleSdkManager : PolarBleApiDeviceFeaturesObserver {
                         BleLogger.trace("Failed to get available online streaming data types: \(err)")
                     }
                 }.disposed(by: disposeBag)
-            break
-
-        case .feature_battery_info:
+        }
+        
+        if ready.contains(.feature_battery_info) {
             Task { @MainActor in
                 self.batteryStatusFeature.isSupported = true
             }
-            break
-            
-        case .feature_device_info:
+        }
+        
+        if ready.contains(.feature_device_info)  {
             Task { @MainActor in
                 self.deviceInfoFeature.isSupported = true
             }
-            break
-            
-        case .feature_polar_h10_exercise_recording:
+        }
+        
+        if ready.contains(.feature_polar_h10_exercise_recording) {
             Task { @MainActor in
                 self.h10RecordingFeature.isSupported = true
             }
-            break
-            
-        case .feature_polar_device_time_setup:
-            Task { @MainActor in
-                self.deviceTimeSetupFeature.isSupported = true
-            }
-            
             Task {
                 getH10RecordingStatus()
             }
-            
-            break
-            
-        case  .feature_polar_sdk_mode:
+        }
+        
+        if ready.contains(.feature_polar_device_time_setup) ||
+            ready.contains(.feature_polar_device_control) {
+            Task { @MainActor in
+                self.deviceTimeSetupFeature.isSupported = true
+            }
+        }
+        
+        if ready.contains(.feature_polar_sdk_mode) {
             Task { @MainActor in
                 self.sdkModeFeature.isSupported = true
             }
             Task {
                 await getSdkModeStatus()
             }
-            break
-            
-        case .feature_polar_online_streaming:
+        }
+        
+        if ready.contains(.feature_polar_online_streaming) {
             Task { @MainActor in
                 self.onlineStreamingFeature.isSupported = true
             }
@@ -3140,54 +3599,77 @@ extension PolarBleSdkManager : PolarBleApiDeviceFeaturesObserver {
                         BleLogger.trace("Failed to get available online streaming data types: \(err)")
                     }
                 }.disposed(by: disposeBag)
-            break
-            
-        case .feature_polar_offline_recording:
+        }
+        
+        if ready.contains(.feature_polar_offline_recording) {
             Task { @MainActor in
                 self.offlineRecordingFeature.isSupported = true
             }
             Task {
                 await getOfflineRecordingStatus()
             }
-            break
-    
-        case .feature_polar_led_animation:
+        }
+
+        if ready.contains(.feature_polar_offline_exercise_v2) {
+            Task { @MainActor in
+                self.offlineExerciseV2Feature.isSupported = true
+            }
+            Task {
+                await getOfflineExerciseV2Status()
+            }
+        }
+
+        if ready.contains(.feature_polar_led_animation) {
             Task { @MainActor in
                 self.ledAnimationFeature.isSupported = true
             }
             Task {
                 await getSdkModeStatus()
             }
-            break
-        case .feature_polar_firmware_update:
+        }
+    
+        if ready.contains(.feature_polar_firmware_update) ||
+            ready.contains(.feature_polar_device_control) {
             Task { @MainActor in
                 self.firmwareUpdateFeature.isSupported = true
                 self.checkFirmwareUpdateFeature.isSupported = true
+                if checkFirmwareUpdateNeeded() {
+                    Task {
+                        await checkFirmwareUpdate()
+                    }
+                }
             }
-        case .feature_polar_activity_data:
-            // Not implemented
+        }
+    
+        if ready.contains(.feature_polar_training_data) {
+            Task { @MainActor in
+                self.trainingSessionEntries.isSupported = true
+            }
+            NSLog("Training data feature is ready")
+        }
+        
+        if ready.contains(.feature_polar_sleep_data) {
+            Task { @MainActor in
+                self.sleepRecordingFeature.isSupported = true
+            }
+            Task {
+                await getSleepRecordingState()
+            }
+        }
+    
+        if ready.contains(.feature_polar_activity_data) {
+            // Not implemented. Could enable activity data functions.
             print("Not implemented")
-        case .feature_polar_features_configuration_service:
-                // Not implemented
-                print("Not implemented")
+        }
+    
+        if ready.contains(.feature_polar_features_configuration_service) {
+            // Not implemented. Could enable multi BLE mode control.
+            print("Not implemented")
         }
     }
     
-    // deprecated
-    func hrFeatureReady(_ identifier: String) {
-        NSLog("HR ready")
-    }
-    
-    // deprecated
-    func ftpFeatureReady(_ identifier: String) {
-        NSLog("FTP ready")
-    }
-    
-    // deprecated
-    func streamingFeaturesReady(_ identifier: String, streamingFeatures: Set<PolarDeviceDataType>) {
-        for feature in streamingFeatures {
-            NSLog("Feature \(feature) is ready.")
-        }
+    func bleSdkFeatureReady(_ identifier: String, feature: PolarBleSdk.PolarBleSdkFeature) {
+        NSLog("Feature is ready: \(feature)")
     }
 }
 
@@ -3270,14 +3752,16 @@ extension PolarBleSdkManager : PolarBleApiLogger {
 
 // Mark: - iOS local notifications
 extension PolarBleSdkManager {
-    private func showFWUNotification(id: String, title: String, body: String) {
+    private func showUNUserNotification(id: String, title: String, body: String) {
         Task { @MainActor in
             do {
-                if try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) == true {
+                if try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.badge, .sound]) == true {
                     let content = UNMutableNotificationContent()
                     content.title = title
                     content.body = body
                     try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+                } else {
+                    BleLogger.trace("PSDC: Permission not granted for notifications")
                 }
             } catch let err {
                 // Ignore
@@ -3286,3 +3770,4 @@ extension PolarBleSdkManager {
         }
     }
 }
+
