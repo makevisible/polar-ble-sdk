@@ -16,6 +16,7 @@ import fi.polar.remote.representation.protobuf.DailySummary
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Maybe
 import io.reactivex.rxjava3.core.Single
+import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.functions.Function
 import org.reactivestreams.Publisher
 import protocol.PftpRequest
@@ -50,50 +51,56 @@ internal object PolarActivityUtils {
             val activityFileDir = "$ARABICA_USER_ROOT_FOLDER${date.format(dateFormatter)}/${ACTIVITY_DIRECTORY}"
             var fileList = mutableListOf<String>()
             var stepCount = 0
+            val composite = CompositeDisposable()
 
-            listFiles(client, activityFileDir,
-                condition = { entry: String ->
-                    entry.matches(Regex("^${activityFileDir}/")) ||
-                            entry == "ASAMPL" ||
-                            entry.contains(".BPB")})
-                .map {
-                    fileList.add(it)
-                }.doFinally {
-                    var index = 0
-                    if (fileList.isNotEmpty()) {
-                        for (file in fileList) {
-                            client.request(
-                                PftpRequest.PbPFtpOperation.newBuilder()
-                                    .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
-                                    .setPath(file)
-                                    .build()
-                                    .toByteArray()
-                            ).subscribe(
-                                { response ->
-                                    val proto =
-                                        ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
-                                    stepCount += proto.stepsSamplesList.sum()
-                                    if (++index == fileList.size) {
-                                        emitter.onSuccess(stepCount)
-                                    }
-                                },
-                                { error ->
-                                    BleLogger.w(
-                                        TAG,
-                                        "readStepsFromDayDirectory() failed for file: $file, error: $error"
+            composite.add(
+                listFiles(client, activityFileDir,
+                    condition = { entry: String ->
+                        entry.matches(Regex("^${activityFileDir}/")) ||
+                                entry == "ASAMPL" ||
+                                entry.contains(".BPB")})
+                    .map {
+                        fileList.add(it)
+                    }.doFinally {
+                        var index = 0
+                        if (fileList.isNotEmpty()) {
+                            for (file in fileList) {
+                                composite.add(
+                                    client.request(
+                                        PftpRequest.PbPFtpOperation.newBuilder()
+                                            .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
+                                            .setPath(file)
+                                            .build()
+                                            .toByteArray()
+                                    ).subscribe(
+                                        { response ->
+                                            val proto =
+                                                ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
+                                            stepCount += proto.stepsSamplesList.sum()
+                                            if (++index == fileList.size) {
+                                                emitter.onSuccess(stepCount)
+                                            }
+                                        },
+                                        { error ->
+                                            BleLogger.w(
+                                                TAG,
+                                                "readStepsFromDayDirectory() failed for file: $file, error: $error"
+                                            )
+                                            emitter.onSuccess(0)
+                                        }
                                     )
-                                    emitter.onSuccess(0)
-                                }
-                            )
+                                )
+                            }
+                        } else {
+                            BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() could not find files to read for date $date.")
+                            emitter.onSuccess(0)
                         }
-                    } else {
-                        BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() could not find files to read for date $date.")
+                    }.doOnError { error ->
+                        BleLogger.w(TAG, "readStepsFromDayDirectory() failed while listing files, error occurred $error.")
                         emitter.onSuccess(0)
-                    }
-                }.doOnError { error ->
-                    BleLogger.w(TAG, "readStepsFromDayDirectory() failed while listing files, error occurred $error.")
-                    emitter.onSuccess(0)
-                }.subscribe()
+                    }.subscribe()
+            )
+            emitter.setDisposable(composite)
         }
     }
 
@@ -201,57 +208,64 @@ internal object PolarActivityUtils {
             var activitySamplesDataList: MutableList<PolarActivitySamplesData> = mutableListOf()
             var activitySamplesDayData = PolarActivitySamplesDayData()
             var activitySamplesData = PolarActivitySamplesData()
-            listFiles(client, activityFileDir,
-                condition = { entry: String ->
-                    entry.matches(Regex("^${activityFileDir}/")) ||
-                            entry == "ASAMPL" ||
-                            entry.contains(".BPB")})
-                .map {
-                    fileList.add(it)
-                }.doFinally {
-                    var index = 0
-                    if (fileList.isNotEmpty()) {
-                        for (file in fileList) {
-                            client.request(
-                                PftpRequest.PbPFtpOperation.newBuilder()
-                                    .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
-                                    .setPath(file)
-                                    .build()
-                                    .toByteArray()
-                            ).subscribe(
-                                { response ->
-                                    val proto =
-                                        ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
+            val composite = CompositeDisposable()
 
-                                    activitySamplesData.startTime = PolarTimeUtils.pbLocalDateTimeToLocalDateTime(proto.startTime)
-                                    activitySamplesData.stepSamples = proto.stepsSamplesList
-                                    activitySamplesData.stepRecordingInterval = PolarTimeUtils.pbDurationToInt(proto.stepsRecordingInterval)/1E3.toInt()
-                                    activitySamplesData.metSamples = proto.metSamplesList
-                                    activitySamplesData.metRecordingInterval = PolarTimeUtils.pbDurationToInt(proto.metRecordingInterval)/1E3.toInt()
-                                    activitySamplesData.activityInfoList = parsePbActivityInfo(proto.activityInfoList)
-                                    activitySamplesDataList.add(activitySamplesData)
-                                    activitySamplesDayData.polarActivitySamplesDataList = activitySamplesDataList
-                                    if (++index == fileList.size) {
-                                        emitter.onSuccess(activitySamplesDayData)
-                                    }
-                                },
-                                { error ->
-                                    BleLogger.w(
-                                        TAG,
-                                        "readActivitySamplesDataFromDayDirectory() failed for file: $file, error: $error"
+            composite.add(
+                listFiles(client, activityFileDir,
+                    condition = { entry: String ->
+                        entry.matches(Regex("^${activityFileDir}/")) ||
+                                entry == "ASAMPL" ||
+                                entry.contains(".BPB")})
+                    .map {
+                        fileList.add(it)
+                    }.doFinally {
+                        var index = 0
+                        if (fileList.isNotEmpty()) {
+                            for (file in fileList) {
+                                composite.add(
+                                    client.request(
+                                        PftpRequest.PbPFtpOperation.newBuilder()
+                                            .setCommand(PftpRequest.PbPFtpOperation.Command.GET)
+                                            .setPath(file)
+                                            .build()
+                                            .toByteArray()
+                                    ).subscribe(
+                                        { response ->
+                                            val proto =
+                                                ActivitySamples.PbActivitySamples.parseFrom(response.toByteArray())
+
+                                            activitySamplesData.startTime = PolarTimeUtils.pbLocalDateTimeToLocalDateTime(proto.startTime)
+                                            activitySamplesData.stepSamples = proto.stepsSamplesList
+                                            activitySamplesData.stepRecordingInterval = PolarTimeUtils.pbDurationToInt(proto.stepsRecordingInterval)/1E3.toInt()
+                                            activitySamplesData.metSamples = proto.metSamplesList
+                                            activitySamplesData.metRecordingInterval = PolarTimeUtils.pbDurationToInt(proto.metRecordingInterval)/1E3.toInt()
+                                            activitySamplesData.activityInfoList = parsePbActivityInfo(proto.activityInfoList)
+                                            activitySamplesDataList.add(activitySamplesData)
+                                            activitySamplesDayData.polarActivitySamplesDataList = activitySamplesDataList
+                                            if (++index == fileList.size) {
+                                                emitter.onSuccess(activitySamplesDayData)
+                                            }
+                                        },
+                                        { error ->
+                                            BleLogger.w(
+                                                TAG,
+                                                "readActivitySamplesDataFromDayDirectory() failed for file: $file, error: $error"
+                                            )
+                                            emitter.onSuccess(activitySamplesDayData)
+                                        }
                                     )
-                                    emitter.onSuccess(activitySamplesDayData)
-                                }
-                            )
+                                )
+                            }
+                        } else {
+                            BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() could not find files to read for date $date.")
+                            emitter.onSuccess(activitySamplesDayData)
                         }
-                    } else {
-                        BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() could not find files to read for date $date.")
+                    }.doOnError { error ->
+                        BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() failed while listing files, error occurred $error.")
                         emitter.onSuccess(activitySamplesDayData)
-                    }
-                }.doOnError { error ->
-                    BleLogger.w(TAG, "readActivitySamplesDataFromDayDirectory() failed while listing files, error occurred $error.")
-                    emitter.onSuccess(activitySamplesDayData)
-                }.subscribe()
+                    }.subscribe()
+            )
+            emitter.setDisposable(composite)
         }
     }
 
