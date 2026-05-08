@@ -1052,7 +1052,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
     private fun deviceSupportsFasterOfflineRecordListing(identifier: String): Single<ByteArray> {
         return Single.create { emitter ->
             try {
-                getFile(identifier, PMDFilePath)
+                val disposable = getFile(identifier, PMDFilePath)
                     .subscribe(
                         { file ->
                             emitter.onSuccess(file)
@@ -1060,6 +1060,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                         { _ ->
                             emitter.onSuccess(byteArrayOf())
                         })
+                emitter.setDisposable(disposable)
             } catch (e: Exception) {
                 BleLogger.e(TAG, "Failed to check if device supports fast offline record listing: $e")
                 emitter.onError(e)
@@ -1972,12 +1973,13 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     if (ledConfig.ppiModeLedEnabled) LedConfig.LED_ANIMATION_ENABLE_BYTE else LedConfig.LED_ANIMATION_DISABLE_BYTE
                 val data = ByteArrayInputStream(byteArrayOf(sdkModeLedByte, ppiModeLedByte))
 
-                client.write(builder.build().toByteArray(), data)
-                    .doOnError { error ->
-                        emitter.onError(error)
-                    }
-                    .subscribe()
-                emitter.onComplete()
+                val disposable = client.write(builder.build().toByteArray(), data)
+                    .ignoreElements()
+                    .subscribe(
+                        { emitter.onComplete() },
+                        { error -> emitter.onError(error) }
+                    )
+                emitter.setDisposable(disposable)
             } catch (error: Throwable) {
                 BleLogger.e(TAG, "setLedConfig() error: $error")
                 emitter.onError(error)
@@ -2939,12 +2941,13 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 builder.command = PftpRequest.PbPFtpOperation.Command.PUT
                 builder.path = LogConfig.LOG_CONFIG_FILENAME
                 val data = ByteArrayInputStream(logConfig.toProto().toByteArray())
-                client.write(builder.build().toByteArray(), data)
-                    .doOnError { error ->
-                        emitter.onError(error)
-                    }
-                    .subscribe()
-                emitter.onComplete()
+                val disposable = client.write(builder.build().toByteArray(), data)
+                    .ignoreElements()
+                    .subscribe(
+                        { emitter.onComplete() },
+                        { error -> emitter.onError(error) }
+                    )
+                emitter.setDisposable(disposable)
             } catch (error: Throwable) {
                 BleLogger.e(TAG, "Failed to set log config: $error")
                 emitter.onError(error)
@@ -3647,11 +3650,13 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 }
 
                 val inputStream = ByteArrayInputStream(deviceSettingsData)
-                client.write(deviceSettingsBuilder.build().toByteArray(), inputStream)
+                val disposable = client.write(deviceSettingsBuilder.build().toByteArray(), inputStream)
+                    .ignoreElements()
                     .subscribe(
                         { emitter.onComplete() },
                         { error -> emitter.onError(error) }
                     )
+                emitter.setDisposable(disposable)
         }
     }
 
@@ -3707,7 +3712,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                     BleLogger.e(TAG, "Failed to get device user settings: $error")
                     emitter.onError(error)
                 }
-            )
+            ).also { disposable -> emitter.setDisposable(disposable) }
         }
     }
 
@@ -4186,11 +4191,13 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
             val inputStream = ByteArrayInputStream(deviceSettingsData)
 
-            client.write(deviceSettingsBuilder.build().toByteArray(), inputStream)
+            val disposable = client.write(deviceSettingsBuilder.build().toByteArray(), inputStream)
+                .ignoreElements()
                 .subscribe(
                     { emitter.onComplete() },
                     { error -> emitter.onError(error) }
                 )
+            emitter.setDisposable(disposable)
         }
     }
 

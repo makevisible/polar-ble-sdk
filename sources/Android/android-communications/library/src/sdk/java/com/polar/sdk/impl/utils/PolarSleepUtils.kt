@@ -6,6 +6,7 @@ import com.polar.sdk.api.model.sleep.*
 import com.polar.services.datamodels.protobuf.SleepSkinTemperatureResult
 import fi.polar.remote.representation.protobuf.SleepanalysisResult
 import io.reactivex.rxjava3.core.Single
+import io.reactivex.rxjava3.disposables.CompositeDisposable
 import protocol.PftpRequest
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -26,13 +27,21 @@ internal object PolarSleepUtils {
      */
     fun readSleepDataFromDayDirectory(client: BlePsFtpClient, date: LocalDate): Single<PolarSleepAnalysisResult> {
         return Single.create { emitter ->
-            val disposable = readSleepData(client, date).subscribe() { response ->
-               readSleepSkintemperatureResult(client, date, response).subscribe()
-               { response ->
-                   emitter.onSuccess(response)
-               }
-           }
-            emitter.setDisposable(disposable)
+            val composite = CompositeDisposable()
+            composite.add(
+                readSleepData(client, date).subscribe(
+                    { response ->
+                        composite.add(
+                            readSleepSkintemperatureResult(client, date, response).subscribe(
+                                { withSkinTemp -> emitter.onSuccess(withSkinTemp) },
+                                { error -> emitter.onError(error) }
+                            )
+                        )
+                    },
+                    { error -> emitter.onError(error) }
+                )
+            )
+            emitter.setDisposable(composite)
         }
     }
 

@@ -159,7 +159,7 @@ internal object  PolarFileUtils {
                 builder.path = path
                 val dataInputStream = ByteArrayInputStream(data)
 
-                client.write(builder.build().toByteArray(), dataInputStream)
+                val disposable = client.write(builder.build().toByteArray(), dataInputStream)
                     .subscribe({
                         BleLogger.d(tag, "pFtpWriteOperation client write progress $it: $path")
                     },{ error ->
@@ -169,6 +169,7 @@ internal object  PolarFileUtils {
                         BleLogger.d(tag, "pFtpWriteOperation client write completed for $path")
                         emitter.onComplete()
                     })
+                emitter.setCancellable { disposable.dispose() }
             } catch (error: Throwable) {
                 BleLogger.e(tag, "pFtpWriteOperation() $path error: $error")
                 emitter.onError(error)
@@ -266,7 +267,7 @@ internal object  PolarFileUtils {
         builder.command = PftpRequest.PbPFtpOperation.Command.REMOVE
         builder.path = filePath
         Completable.create { emitter ->
-            client.request(builder.build().toByteArray())
+            val disposable = client.request(builder.build().toByteArray())
                 .onErrorResumeNext { error: Throwable ->
                     BleLogger.d(tag, "An error occurred while trying to remove $filePath, error: $error")
                     Single.error(handleError(error))
@@ -277,6 +278,7 @@ internal object  PolarFileUtils {
                     BleLogger.d(tag, "Error while trying to remove item from filePath $filePath from device $identifier, error: $error.")
                     emitter.onError(error)
                 })
+            emitter.setCancellable { disposable.dispose() }
         }
     }
 }
