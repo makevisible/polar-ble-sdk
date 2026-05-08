@@ -1895,13 +1895,13 @@ extension PolarBleApiImpl: PolarBleApi  {
                     single(.failure(PolarErrors.serviceNotFound))
                     return Disposables.create()
                 }
-                
+
                 var operation = Protocol_PbPFtpOperation()
                 operation.command = Protocol_PbPFtpOperation.Command.get
                 let directoryPath = entry.path.components(separatedBy: "/").dropLast().joined(separator: "/") + "/"
                 let fileType = try self.mapDeviceDataTypeToOfflineRecordingFileName(type: entry.type)
                 operation.path = directoryPath
-                _ = client.request(try operation.serializedData())
+                let disposable = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
                             do {
@@ -1916,13 +1916,14 @@ extension PolarBleApiImpl: PolarBleApi  {
                             single(.failure(self.handleError(error)))
                         }
                     )
+                return Disposables.create { disposable.dispose() }
             } catch {
                 single(.failure(self.handleError(error)))
             }
             return Disposables.create()
         }
     }
-    
+
     func getSubRecordings(identifier: String, entry: PolarOfflineRecordingEntry) -> Single<Array<String>> {
         return Single.create { single in
             do {
@@ -1931,18 +1932,18 @@ extension PolarBleApiImpl: PolarBleApi  {
                     single(.failure(PolarErrors.serviceNotFound))
                     return Disposables.create()
                 }
-                
+
                 var operation = Protocol_PbPFtpOperation()
                 operation.command = Protocol_PbPFtpOperation.Command.get
                 let directoryPath = entry.path.components(separatedBy: "/").dropLast().joined(separator: "/") + "/"
                 let type = entry.path.components(separatedBy: "/").last?.replacingOccurrences(of: "[0-9]+.REC", with: "", options: .regularExpression).replacingOccurrences(of: " ", with: "")
                 operation.path = directoryPath
-                
+
                 var parentDir = ""
                 if let lastSlashIndex = entry.path.dropLast().lastIndex(of: "/") {
                     parentDir = String(entry.path[...lastSlashIndex])
                 }
-                _ = client.request(try operation.serializedData())
+                let disposable = client.request(try operation.serializedData())
                     .subscribe(
                         onSuccess: { content in
                             do {
@@ -1962,6 +1963,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             single(.failure(self.handleError(error)))
                         }
                     )
+                return Disposables.create { disposable.dispose() }
             } catch {
                 single(.failure(self.handleError(error)))
             }
@@ -2503,7 +2505,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let data = Data([sdkModeLedByte, ppiModeLedByte])
                 let inputStream = InputStream(data: data)
 
-                _ = client.write(proto as NSData, data: inputStream)
+                let disposable = client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                             completable(.error(error))
@@ -2511,7 +2513,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             completable(.completed)
                         }
                     )
-                completable(.completed)
+                return Disposables.create { disposable.dispose() }
             } catch let err {
                 completable(.error(err))
             }
@@ -2667,7 +2669,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let inputStream = InputStream(data: data)
 
                 BleLogger.trace("Sensor datalog set. Device: \(identifier) Path: \(operation.path)")
-                _ = client.write(proto as NSData, data: inputStream)
+                let disposable = client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                           completable(.error(error))
@@ -2675,7 +2677,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                           completable(.completed)
                       }
                     )
-                completable(.completed)
+                return Disposables.create { disposable.dispose() }
             } catch let err {
                 completable(.error(self.handleError(err)))
             }
@@ -2705,7 +2707,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let physicalDataProto = Data(ftuConfigProto)
                 let physicalDataProtoInputStream = InputStream(data: physicalDataProto)
                 let physicalDataCompletable = Completable.create { physicalDataCompletable in
-                    _ = client.write(physicalDataHeader as NSData, data: physicalDataProtoInputStream)
+                    let inner = client.write(physicalDataHeader as NSData, data: physicalDataProtoInputStream)
                         .subscribe(
                             onError: { error in
                                 BleLogger.error("Failed to write FTU configuration to device: \(identifier) - \(error.localizedDescription)")
@@ -2716,7 +2718,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 BleLogger.trace("User physical data written to device: \(identifier)")
                             }
                         )
-                    return Disposables.create()
+                    return Disposables.create { inner.dispose() }
                 }
 
                 // Setup time completable
@@ -2729,7 +2731,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                         return Disposables.create()
                     }
 
-                    _ = self.setLocalTime(identifier, time: date, zone: TimeZone.current)
+                    let inner = self.setLocalTime(identifier, time: date, zone: TimeZone.current)
                         .subscribe(
                             onCompleted: {
                                 setTimeCompletable(.completed)
@@ -2740,7 +2742,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                                 setTimeCompletable(.error(error))
                             }
                         )
-                    return Disposables.create()
+                    return Disposables.create { inner.dispose() }
                 }
 
                 // Setup user data completable
@@ -2754,7 +2756,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let userIdInputStream = InputStream(data: userIdData)
                 let userDataCompletable = Completable.create { userDataCompletable in
                     do {
-                        _ = client.write(try userIdOperation.serializedData() as NSData, data: userIdInputStream)
+                        let inner = client.write(try userIdOperation.serializedData() as NSData, data: userIdInputStream)
                             .subscribe(
                                 onError: { error in
                                     BleLogger.error("Failed to write User ID to device: \(identifier) - \(error.localizedDescription)")
@@ -2765,17 +2767,18 @@ extension PolarBleApiImpl: PolarBleApi  {
                                     BleLogger.trace("User data written to device: \(identifier)")
                                 }
                             )
+                        return Disposables.create { inner.dispose() }
                     } catch {
                         BleLogger.error("Failed to serialize User ID to device: \(identifier)")
                         userDataCompletable(.error(error))
                     }
                     return Disposables.create()
                 }
-                
+
                 let terminate = self.sendTerminateAndStopSyncNotifications(identifier: identifier)
-                
+
                 // Act
-                _ = self.sendInitializationAndStartSyncNotifications(identifier: identifier)
+                let chainDisposable = self.sendInitializationAndStartSyncNotifications(identifier: identifier)
                     .andThen(setTimeCompletable)
                     .andThen(userDataCompletable)
                     .andThen(physicalDataCompletable)
@@ -2790,6 +2793,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             completable(.error(error))
                         }
                     )
+                return Disposables.create { chainDisposable.dispose() }
             } catch let error {
                 BleLogger.error("Error processing FTU configuration for device: \(identifier) - \(error.localizedDescription)")
                 completable(.error(error))
@@ -3826,7 +3830,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let inputStream = InputStream(data: data)
 
                 BleLogger.trace("Polar user device settings set. Device: \(identifier) Path: \(operation.path)")
-                _ = client.write(proto as NSData, data: inputStream)
+                let disposable = client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                             completable(.error(error))
@@ -3834,9 +3838,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                           completable(.completed)
                       }
                     )
-                completable(.completed)
+                return Disposables.create { disposable.dispose() }
             } catch let err {
-                
+
                 completable(.error(self.handleError(err)))
             }
 
@@ -4332,37 +4336,43 @@ extension PolarBleApiImpl: PolarBleApi  {
                 let session = try self.sessionFtpClientReady(identifier)
                 let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as! BlePsFtpClient
 
-                _ = self.getUserDeviceSettingsProto(client: client)
-                    .subscribe(
-                        onSuccess: { currentProto in
-                            var updated = currentProto
-                        
-                            updated.telemetrySettings.telemetryEnabled = enabled
+                let composite = CompositeDisposable()
+                composite.insert(
+                    self.getUserDeviceSettingsProto(client: client)
+                        .subscribe(
+                            onSuccess: { currentProto in
+                                var updated = currentProto
 
-                            _ = self.setUserDeviceSettingsProto(client: client,
-                                                                polarUserDeviceSettings: updated)
-                                .subscribe(
-                                    onCompleted: {
-                                        BleLogger.trace("Telemetry enabled=\(enabled) written for \(identifier)")
-                                        completable(.completed)
-                                    },
-                                    onError: { error in
-                                        BleLogger.error("Failed to write telemetry setting: \(error)")
-                                        completable(.error(self.handleError(error)))
-                                    }
+                                updated.telemetrySettings.telemetryEnabled = enabled
+
+                                _ = composite.insert(
+                                    self.setUserDeviceSettingsProto(client: client,
+                                                                    polarUserDeviceSettings: updated)
+                                        .subscribe(
+                                            onCompleted: {
+                                                BleLogger.trace("Telemetry enabled=\(enabled) written for \(identifier)")
+                                                completable(.completed)
+                                            },
+                                            onError: { error in
+                                                BleLogger.error("Failed to write telemetry setting: \(error)")
+                                                completable(.error(self.handleError(error)))
+                                            }
+                                        )
                                 )
-                        },
-                        onFailure: { error in
-                            completable(.error(self.handleError(error)))
-                        }
-                    )
+                            },
+                            onFailure: { error in
+                                completable(.error(self.handleError(error)))
+                            }
+                        )
+                )
+                return Disposables.create { composite.dispose() }
             } catch let err {
                 completable(.error(self.handleError(err)))
             }
             return Disposables.create()
         }
     }
-    
+
     func setMultiBLEConnectionMode(identifier: String, enable: Bool) -> Completable {
         return Completable.create { completable in
             do {
@@ -4371,9 +4381,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     completable(.error(PolarErrors.serviceNotFound))
                     return Disposables.create()
                 }
-                
+
                 let enableValue: UInt8 = enable ? 1 : 0
-                _ = client.sendControlPointCommand(BlePfcClient.PfcMessage.pfcConfigureMultiConnection, value: enableValue)
+                let disposable = client.sendControlPointCommand(BlePfcClient.PfcMessage.pfcConfigureMultiConnection, value: enableValue)
                     .subscribe(
                         onSuccess: { pfcResponse in
                             if pfcResponse.status != .success {
@@ -4383,6 +4393,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             }
                         }
                     )
+                return Disposables.create { disposable.dispose() }
             } catch {
                 completable(.error(self.handleError(error)))
             }
@@ -4484,11 +4495,11 @@ extension PolarBleApiImpl: PolarBleApi  {
                 operation.command = .put
                 operation.path = DEVICE_SETTINGS_FILE_PATH
                 let proto = try operation.serializedData()
-                
+
                 let settingsData = try polarUserDeviceSettings.serializedData()
                 let inputStream = InputStream(data: settingsData)
 
-                _ = client.write(proto as NSData, data: inputStream)
+                let disposable = client.write(proto as NSData, data: inputStream)
                     .subscribe(
                         onError: { error in
                             completable(.error(self.handleError(error)))
@@ -4496,6 +4507,7 @@ extension PolarBleApiImpl: PolarBleApi  {
                             completable(.completed)
                         }
                     )
+                return Disposables.create { disposable.dispose() }
             } catch {
                 completable(.error(self.handleError(error)))
             }
