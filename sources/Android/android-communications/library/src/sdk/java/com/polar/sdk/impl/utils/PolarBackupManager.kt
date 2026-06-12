@@ -102,8 +102,6 @@ class PolarBackupManager(private val client: BlePsFtpClient) {
         } catch (it: Throwable) {
             BleLogger.e(TAG, "Failed to get backup content, error: $it")
             emptyList()
-        }.doOnSuccess { backupFiles ->
-            BleLogger.d(TAG, "Backup completed, files backed up: ${backupFiles.size}")
         }
     }
 
