@@ -272,6 +272,10 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// Visible fork: get a BLE device session validated ready for PMD operations.
     func sessionPmdClientReady(_ identifier: String) throws -> BleDeviceSession
 
+    /// Visible fork: list files (recursively) returning (path, sizeBytes) tuples.
+    /// Upstream `getFileList` returns names only; the Files Viewer diagnostics tooling needs sizes.
+    func getFileListWithSizes(identifier: String, directoryPath: String, recurseDeep: Bool) async throws -> [(name: String, size: UInt64)]
+
     /// Disconnect from the current Polar device.
     ///
     /// - Requires SDK feature(s): None (core API).

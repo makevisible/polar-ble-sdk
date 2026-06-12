@@ -245,6 +245,36 @@ internal object PolarFileUtils {
         }
     }
 
+    // Visible fork: low level API method returning (path, sizeBytes) pairs.
+    // Upstream getFileList drops sizes; the Files Viewer tooling needs them.
+    suspend fun getFileListWithSizes(identifier: String, filePath: String, recurseDeep: Boolean, listener: BleDeviceListener?, tag: String): List<Pair<String, Long>> {
+        val session = try {
+            sessionPsFtpClientReady(identifier, listener)
+        } catch (error: Throwable) {
+            throw handleError(error)
+        }
+        val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
+            ?: throw PolarServiceNotAvailable()
+
+        return when (getFileSystemType(session.polarDeviceType)) {
+            FileSystemType.POLAR_FILE_SYSTEM_V2 -> {
+                var path = filePath.ifEmpty { "/" }
+                path = if (path.first() != '/') "/$path" else path
+                path = if (path.last() != '/') "$path/" else path
+                val results = mutableListOf<Pair<String, Long>>()
+                fetchRecursively(
+                    client = client,
+                    path = path,
+                    condition = null,
+                    recurseDeep = recurseDeep,
+                    tag = tag
+                ).collect { results.add(it) }
+                results
+            }
+            else -> throw PolarOperationNotSupported()
+        }
+    }
+
     // Low level API method
     suspend fun removeFileOrDirectory(
         identifier: String,

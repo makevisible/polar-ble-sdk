@@ -213,6 +213,20 @@ class PolarFileUtils {
         return fileList
     }
 
+    // Visible fork: list files (recursively) returning (path, sizeBytes) tuples.
+    // Upstream listFiles drops sizes; the Files Viewer diagnostics tooling needs them.
+    func listFilesWithSizes(identifier: String, directoryPath: String, recurseDeep: Bool = true) async throws -> [(name: String, size: UInt64)] {
+        let condition = { (entry: String) -> Bool in entry.contains(".") || entry == "" }
+        let session = try self.serviceClientUtils?.sessionFtpClientReady(identifier)
+        guard let client = session?.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
+            throw PolarErrors.serviceNotFound
+        }
+        var path = directoryPath
+        if path.first != "/" { path.insert("/", at: path.startIndex) }
+        if path.last != "/" { path.insert("/", at: path.endIndex) }
+        return try await fetchRecursive(path, client: client, condition: condition, recurseDeep: recurseDeep)
+    }
+
     func deleteFile(identifier: String, filePath: String) async throws {
         _ = try await removeSingleFile(identifier: identifier, filePath: filePath)
     }

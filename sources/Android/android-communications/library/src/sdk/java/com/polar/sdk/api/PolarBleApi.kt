@@ -724,4 +724,20 @@ abstract class PolarBleApi(val features: Set<PolarBleSdkFeature>) : PolarOnlineS
      */
     @Throws(Throwable::class)
     abstract fun sessionPmdClientReady(identifier: String): com.polar.androidcommunications.api.ble.model.BleDeviceSession
+
+    /**
+     * Visible fork: list files (recursively) returning (path, sizeBytes) pairs.
+     * Upstream [PolarBleLowLevelApi.getFileList] returns names only; the Files Viewer
+     * diagnostics tooling needs the sizes.
+     *
+     * @param identifier Polar device ID or BT address
+     * @param filePath Directory path to list from (defaults to root).
+     * @param recurseDeep Recurse to the bottom of the file tree when true.
+     * @return List of (absolutePath, sizeBytes) pairs.
+     */
+    abstract suspend fun getFileListWithSizes(
+        identifier: String,
+        filePath: String = "/",
+        recurseDeep: Boolean = true
+    ): List<Pair<String, Long>>
 }

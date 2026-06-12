@@ -3433,6 +3433,10 @@ extension PolarBleApiImpl: PolarBleApi  {
         return try await fileUtils.listFiles(identifier: identifier, directoryPath: directoryPath, recurseDeep: recurseDeep)
     }
 
+    func getFileListWithSizes(identifier: String, directoryPath: String, recurseDeep: Bool) async throws -> [(name: String, size: UInt64)] {
+        return try await fileUtils.listFilesWithSizes(identifier: identifier, directoryPath: directoryPath, recurseDeep: recurseDeep)
+    }
+
 
     private func handleError(_ error: Error) -> Error {
         let nsError = error as NSError

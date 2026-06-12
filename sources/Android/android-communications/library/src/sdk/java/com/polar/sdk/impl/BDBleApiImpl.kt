@@ -1841,6 +1841,10 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
         return PolarFileUtils.getFileList(identifier, filePath, recurseDeep, listener, TAG)
     }
 
+    override suspend fun getFileListWithSizes(identifier: String, filePath: String, recurseDeep: Boolean): List<Pair<String, Long>> {
+        return PolarFileUtils.getFileListWithSizes(identifier, filePath, recurseDeep, listener, TAG)
+    }
+
     private fun parseExerciseStatus(data: ByteArray): PolarExerciseSession.ExerciseInfo {
         val proto = PftpResponse.PbPftpGetExerciseStatusResult.parseFrom(data)
         BleLogger.d(TAG, "EX_STATUS raw: state=${proto.exerciseState} hasSport=${proto.hasSportIdentifier()} sport=${if (proto.hasSportIdentifier()) proto.sportIdentifier.value else -1} startTime=${proto.startTime}")
