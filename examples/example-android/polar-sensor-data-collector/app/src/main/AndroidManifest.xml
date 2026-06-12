@@ -48,12 +48,6 @@
 
     <!-- Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    
-    <!-- Keep CPU awake for long-running automation -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Allow external device capabilities configuration -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
@@ -99,6 +93,11 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".ui.watchface.WatchFaceActivity"
+            android:exported="false"
+            android:label="@string/watch_face_complications_title"
+            android:theme="@style/AppTheme" />
+        <activity
             android:name=".ui.genericapi.GenericApiActivity"
             android:exported="false"
             android:foregroundServiceType="dataSync|connectedDevice"
@@ -106,7 +105,7 @@
             android:theme="@style/AppTheme"/>
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:authorities="com.polar.polarsensordatacollector.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
@@ -116,17 +115,6 @@
 
         <service
             android:name=".service.OnlineStreamService"
-            android:enabled="true"
-            android:exported="false" />
-
-        <service
-            android:name=".service.OhrAutomationService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
-
-        <service
-            android:name=".service.H10AutomationService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />

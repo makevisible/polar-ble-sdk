@@ -262,6 +262,9 @@
     <!-- Daily summary data -->
     <string name="daily_summary_label">Daily summary</string>
 
+    <!-- SpO2 test data -->
+    <string name="spo2_test_label">SpO2 test data</string>
+
     <!-- Battery present states -->
     <string name="battery_present_state_present">Battery present</string>
     <string name="battery_present_state_not_present">Battery not present</string>
@@ -315,26 +318,6 @@
     <string name="hr_value">Hr: %1$s bpm</string>
     <string name="close">CLOSE</string>
 
-    <!-- OHR Automation -->
-    <string name="ohr_auto_wait_duration">Wait:</string>
-    <string name="ohr_auto_hours">h</string>
-    <string name="ohr_auto_minutes">m</string>
-    <string name="ohr_auto_start">Start OHR Automation</string>
-    <string name="ohr_auto_stop">Stop</string>
-    <string name="ohr_auto_stop_and_fetch">Stop &amp; Fetch</string>
-    <string name="ohr_auto_skip_wait">Stop &amp; Continue</string>
-    <string name="ohr_auto_status_idle">Ready to start</string>
-    <string name="ohr_auto_status_enabling">Enabling OHR logging…</string>
-    <string name="ohr_auto_status_waiting">Waiting…</string>
-    <string name="ohr_auto_status_disabling">Disabling OHR logging…</string>
-    <string name="ohr_auto_status_listing">Listing files on band…</string>
-    <string name="ohr_auto_status_downloading">Downloading %1$s…</string>
-    <string name="ohr_auto_status_cleaning">Cleaning up…</string>
-    <string name="ohr_auto_status_saving">Saving files…</string>
-    <string name="ohr_auto_status_cycle_complete">Cycle complete, restarting…</string>
-    <string name="ohr_auto_status_error">Error: %1$s</string>
-    <string name="ohr_auto_cycles_completed">Cycles completed: %1$d</string>
-    
     <!-- Graphs -->
     <string name="graph">Graph</string>
     <string name="acc_value">ACC  x:%1$s  y:%2$s  z:%3$s</string>
@@ -359,6 +342,12 @@
 
     <!-- Battery API texts -->
     <string name="charge_state_header">Read charge state</string>
+
+    <!-- BLE connection API texts -->
+    <string name="ble_check_conn_api_title">Ble disconnected due to error?</string>
+    
+    <!-- BLE RSSI API texts -->
+    <string name="ble_signal_strength_header">Get BLE signal strength</string>
 
     <!-- Exercise V2 -->
     <string name="exercise_v2_start_exercise">Start Exercise</string>
@@ -388,4 +377,33 @@
     <string name="exercise_v2_status_exercise_found">Exercise in device</string>
     <string name="exercise_v2_prefix_fetch">Fetch</string>
     <string name="exercise_v2_prefix_remove">Remove</string>
+
+    <!-- HR stream display -->
+    <string name="hr_label_bpm">bpm: </string>
+    <string name="hr_label_rrsms">rrsMs: </string>
+    <string name="hr_label_contact">contact: </string>
+    <string name="hr_rr_not_available">Not available</string>
+
+    <!-- Watch face configuration -->
+    <string name="watch_face_complications_title">Watch face complications</string>
+    <string name="watch_face_complications_configure">Configure</string>
+    <string name="watch_face_screen_title">Watch Face Complications</string>
+    <string name="watch_face_apply_button">Apply to device</string>
+    <string name="watch_face_slot_label">Slot %d</string>
+    <string name="watch_face_complication_empty">Empty</string>
+    <string name="watch_face_applied_success">Complications applied successfully, watch restart may be needed to update the UI</string>
+    <string name="watch_face_failed_prefix">Failed: </string>
+    <string name="watch_face_status_reading">Reading from device…</string>
+    <string name="watch_face_status_read_null">Read returned null</string>
+    <string name="watch_face_status_loaded">Loaded %d slot(s) from device</string>
+    <string name="watch_face_status_read_failed_prefix">Read failed</string>
+    <string name="watch_face_status_read_failed">Read failed: %s</string>
+
+    <!-- File compression for email sharing -->
+    <string name="file_compression_completed">Files compressed to ZIP for email compatibility</string>
+    <string name="file_too_large_for_email_title">File too large for email</string>
+    <string name="file_too_large_for_email_message">The file is too large to send via email even after compression. You can still share it using cloud storage, Files app, or other apps.</string>
+    <string name="file_too_large_share_anyway">Share anyway</string>
+    <string name="file_too_large_chooser_title">Share via…</string>
+    <string name="file_compression_failed">Failed to compress files: %1$s</string>
 </resources>
