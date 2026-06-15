@@ -96,9 +96,13 @@ afterEvaluate {
         publications {
             aar(MavenPublication) {
                 from components.sdkRelease
-                groupId = 'com.github.polarofficial'
+                // Visible fork: allow overriding coordinates for local Maven
+                // validation (e.g. -PpublishGroup=com.github.makevisible
+                // -PpublishVersion=8.0.0-visible-rc1). Defaults preserve the
+                // upstream/JitPack behaviour.
+                groupId = project.findProperty('publishGroup') ?: 'com.github.polarofficial'
                 artifactId = 'polar-ble-sdk'
-                version = getVersion()
+                version = project.findProperty('publishVersion') ?: getVersion()
             }
         }
     }
