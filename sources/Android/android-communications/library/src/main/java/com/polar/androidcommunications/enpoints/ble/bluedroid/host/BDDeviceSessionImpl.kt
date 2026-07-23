@@ -163,6 +163,7 @@ class BDDeviceSessionImpl internal constructor(
                         BluetoothDevice.BOND_BONDED -> continuation.resume(Unit)
                     }
                     continuation.invokeOnCancellation {
+                        d(TAG, "bonding wait cancelled")
                         observer[0]?.let { bondingManager.removeObserver(it) }
                     }
                 } else {

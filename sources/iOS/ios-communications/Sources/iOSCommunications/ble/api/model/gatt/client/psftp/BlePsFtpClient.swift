@@ -381,6 +381,7 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
                 self.mtuOperationQueue.addOperation(block)
             }
         }, onCancel: { [weak self] in
+            BleLogger.trace("PS-FTP request cancelled by consumer")
             block.cancel()
             self?.packetsWritten.signal()
             self?.mtuInputQueue.signal()
@@ -414,7 +415,10 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
             let block = BlockOperation()
             // Visible fork: without this, cancelling the stream's consumer never cancels
             // the BlockOperation nor wakes whichever condition it may be blocked on.
-            cont.onTermination = { [weak self] _ in
+            cont.onTermination = { [weak self] reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("PS-FTP write stream cancelled by consumer")
+                }
                 block.cancel()
                 self?.packetsWritten.signal()
                 self?.mtuInputQueue.signal()
@@ -597,6 +601,7 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
                 self.mtuOperationQueue.addOperation(block)
             }
         }, onCancel: { [weak self] in
+            BleLogger.trace("PS-FTP query cancelled by consumer")
             block.cancel()
             self?.mtuInputQueue.signal()
             resumeOnce?.resume(with: .failure(BlePsFtpException.operationCanceled))
@@ -648,6 +653,7 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
                 self.sendNotificationOperationQueue.addOperation(block)
             }
         }, onCancel: { [weak self] in
+            BleLogger.trace("PS-FTP send notification cancelled by consumer")
             block.cancel()
             self?.notificationPacketsWritten.signal()
             resumeOnce?.resume(with: .failure(BlePsFtpException.operationCanceled))
@@ -664,7 +670,10 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
             // cancels the BlockOperation but never wakes the indefinite
             // pollUntilSignaled() wait, so it (and the serial waitNotificationOperationQueue
             // behind it) hangs until the next real D2H notification or a full disconnect.
-            cont.onTermination = { [weak self] _ in
+            cont.onTermination = { [weak self] reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("PS-FTP wait notification stream cancelled by consumer")
+                }
                 block.cancel()
                 self?.notificationInputQueue.signal()
             }
@@ -732,6 +741,7 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
                     }, receiveValue: { _ in })
             }
         }, onCancel: {
+            BleLogger.trace("PS-FTP waitPsFtpReady cancelled by consumer")
             resumeOnce?.resume(with: .failure(CancellationError()))
             cancellable?.cancel()
         })

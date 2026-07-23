@@ -21,7 +21,10 @@ func asyncPublisher<T>(_ operation: @escaping () async throws -> T) -> AnyPublis
             }
         }
         return future
-            .handleEvents(receiveCancel: { task?.cancel() })
+            .handleEvents(receiveCancel: {
+                BleLogger.trace("asyncPublisher subscription cancelled, cancelling backing task")
+                task?.cancel()
+            })
             .eraseToAnyPublisher()
     }.eraseToAnyPublisher()
 }
@@ -47,7 +50,10 @@ func streamPublisher<T>(_ stream: AsyncThrowingStream<T, Error>) -> AnyPublisher
         }
     }
     return subject
-        .handleEvents(receiveCancel: { task.cancel() })
+        .handleEvents(receiveCancel: {
+            BleLogger.trace("streamPublisher subscription cancelled, cancelling backing task")
+            task.cancel()
+        })
         .eraseToAnyPublisher()
 }
 

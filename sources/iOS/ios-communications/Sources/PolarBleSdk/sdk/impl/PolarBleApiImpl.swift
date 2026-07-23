@@ -909,7 +909,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("searchForDevice stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
     
@@ -939,7 +944,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("searchForDevice stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
 
@@ -1169,7 +1179,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("startListenForPolarHrBroadcasts stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
     
@@ -1307,7 +1322,12 @@ extension PolarBleApiImpl: PolarBleApi  {
             }
             // Visible fork: without this, cancelling the stream's consumer never cancels
             // the underlying Task, leaving the PFTP listing running to completion.
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("listOfflineRecordings stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
 
@@ -1798,7 +1818,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                             continuation.finish()
                         } catch { continuation.finish(throwing: error) }
                     }
-                    continuation.onTermination = { _ in task.cancel() }
+                    continuation.onTermination = { reason in
+                        if case .cancelled = reason {
+                            BleLogger.trace("startHrStreaming stream cancelled by consumer")
+                        }
+                        task.cancel()
+                    }
                 }
             }
             hrMulticasts[identifier] = newMulticast
@@ -1819,7 +1844,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish()
                 } catch { continuation.finish(throwing: self.handleError(error)) }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("startHrStreaming stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
 
@@ -3312,7 +3342,12 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish(throwing: PolarErrors.deviceError(description: "\(error)"))
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }  // ← link cancellation
+            continuation.onTermination = { reason in
+                if case .cancelled = reason {
+                    BleLogger.trace("\(type) stream cancelled by consumer")
+                }
+                task.cancel()
+            }
         }
     }
     

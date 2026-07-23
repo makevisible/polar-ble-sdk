@@ -149,6 +149,7 @@ class BDDeviceListenerImpl(
             }
 
             awaitClose {
+                d(TAG, "device search flow closed, removing scan observer")
                 forwardJob.cancel()
                 observers.remove(channel)
                 channel.close()

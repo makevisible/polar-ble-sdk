@@ -346,7 +346,14 @@ abstract class BleGattBase {
                 )
                 else -> {
                     synchronized(integer) {
-                        (integer as Object).wait()
+                        try {
+                            (integer as Object).wait()
+                        } catch (ex: InterruptedException) {
+                            // Visible fork: distinct log line so field diagnostics show
+                            // consumer cancellation of the notification-enable wait.
+                            d(TAG, "waitNotificationEnabled interrupted (cancelled) for $uuid")
+                            throw ex
+                        }
                     }
                     if (integer.get() != ATT_SUCCESS) {
                         if (integer.get() != -1) {

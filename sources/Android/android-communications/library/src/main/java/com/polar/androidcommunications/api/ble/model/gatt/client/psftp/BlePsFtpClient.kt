@@ -541,6 +541,11 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
                     throw BleDisconnected()
                 }
             }
+        } catch (ex: InterruptedException) {
+            // Visible fork: distinct log line so field diagnostics show consumer
+            // cancellation (via runInterruptible) rather than a generic failure.
+            e(TAG, "Send notification id: $id interrupted (cancelled)")
+            throw ex
         } catch (ex: Exception) {
             e(TAG, "Send notification id: $id failed. Exception: ${ex.message}")
             throw toPftpException(ex)
@@ -671,6 +676,7 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
             // disconnect; re-check connection before the long poll so disconnect fails fast
             // instead of stalling for up to PROTOCOL_TIMEOUT_SECONDS.
             if (!txInterface.isConnected()) {
+                d(TAG, "Disconnect detected after response wait, failing fast")
                 throw BleDisconnected("Connection lost during read response")
             }
             val packet = mtuInputQueue.poll(PROTOCOL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)

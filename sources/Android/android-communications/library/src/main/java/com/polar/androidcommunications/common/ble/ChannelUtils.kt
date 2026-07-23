@@ -1,5 +1,6 @@
 package com.polar.androidcommunications.common.ble
 
+import com.polar.androidcommunications.api.ble.BleLogger.Companion.d
 import com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
 import com.polar.androidcommunications.api.ble.model.gatt.BleGattTxInterface
 import kotlinx.coroutines.CancellationException
@@ -88,6 +89,7 @@ class ChannelUtils private constructor() {
                     }
 
                     awaitClose {
+                        d("ChannelUtils", "observer flow closed, removing gatt observer")
                         observers.remove(observer)
                         observer.close()
                         bridgeJob.cancel()
