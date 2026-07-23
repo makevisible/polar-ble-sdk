@@ -19,6 +19,6 @@ public class PolarBleApiDefaultImpl {
     ///
     /// - Returns: version in format major.minor.patch
     public static func versionInfo() -> String {
-        return "8.0.0-visible"
+        return "8.0.1-visible"
     }
 }

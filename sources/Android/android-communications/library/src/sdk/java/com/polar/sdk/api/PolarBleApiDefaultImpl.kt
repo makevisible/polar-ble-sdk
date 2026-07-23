@@ -25,6 +25,6 @@ object PolarBleApiDefaultImpl {
      */
     @JvmStatic
     fun versionInfo(): String {
-        return "8.0.0-visible"
+        return "8.0.1-visible"
     }
 }
