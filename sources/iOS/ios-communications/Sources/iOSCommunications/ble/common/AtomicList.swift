@@ -37,6 +37,15 @@ class AtomicList<T> {
         lock.signal()
         lock.unlock()
     }
+
+    /// Wakes any thread blocked in poll()/pollUntilSignaled() without touching the list
+    /// contents. Visible fork: used to unblock a waiter on consumer cancellation, since
+    /// marking a BlockOperation cancelled does not itself wake an NSCondition wait.
+    func signal() {
+        lock.lock()
+        lock.signal()
+        lock.unlock()
+    }
     
     func size() -> Int {
         lock.lock()

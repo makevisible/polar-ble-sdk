@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -219,7 +220,9 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
     suspend fun request(
         header: ByteArray,
         progressCallback: ProgressCallback? = null
-    ): ByteArrayOutputStream = withContext(Dispatchers.IO) {
+    ): ByteArrayOutputStream = runInterruptible(Dispatchers.IO) {
+        // Visible fork: runInterruptible so consumer cancellation interrupts this thread,
+        // reviving the InterruptedException handling (and device stream-cancel) below.
         txInterface.gattClientRequestStopScanning()
         try {
             var requestData: MutableList<ByteArray> = ArrayList()
@@ -321,94 +324,98 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
         header: ByteArray,
         data: ByteArrayInputStream?
     ): Flow<Long> = channelFlow {
-        txInterface.gattClientRequestStopScanning()
-        try {
-            synchronized(pftpOperationMutex) {
-                if (pftpMtuEnabled?.get() == ATT_SUCCESS) {
-                    d(TAG, "Start write")
-                    currentOperationWrite.set(true)
-                    var pCounter: Long = 0
-                    resetMtuPipe()
-                    val headerSize = header.size
-                    val totalStream = BlePsFtpUtils.makeCompleteMessageStream(
-                        ByteArrayInputStream(header), data,
-                        BlePsFtpUtils.MessageType.REQUEST, 0
-                    )
-                    var next = 0
-                    val totalPayload = totalStream.available().toLong()
-                    val sequenceNumber = Rfc76SequenceNumber()
-                    val timeoutSeconds = getWriteTimeoutForFilePath(
-                        CommunicationsPftpRequest.PbPFtpOperation.parseFrom(header).path
-                    )
-                    var lastEmitTime = 0L
-                    do {
-                        val airPacket: ByteArray
-                        var counter = 0
-                        try {
-                            val temp = next
-                            airPacket = BlePsFtpUtils.buildRfc76MessageFrame(
-                                totalStream, temp, mtuSize.get(), sequenceNumber
-                            )
-                            next = 1
-                            useAttributeLevelResponse.set((++pCounter % packetsCount.get()) == 0L)
-                            txInterface.transmitMessage(
-                                BlePsFtpUtils.RFC77_PFTP_SERVICE,
-                                BlePsFtpUtils.RFC77_PFTP_MTU_CHARACTERISTIC,
-                                airPacket,
-                                useAttributeLevelResponse.get()
-                            )
-                            if (totalStream.available() != 0) {
-                                if (useAttributeLevelResponse.get()) {
-                                    packetsWrittenWithResponse.set(0)
-                                    waitPacketsWritten(packetsWrittenWithResponse, mtuWaiting, 1, timeoutSeconds)
-                                    packetsWritten.set(0)
-                                    counter = 0
-                                } else {
-                                    ++counter
-                                }
-                                val packet = mtuInputQueue.poll()
-                                if (packet != null && packet.second == 0) {
-                                    e(TAG, "Frame sending interrupted by device!")
-                                    val response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
-                                    if (response.status == 0) {
-                                        throw PftpResponseError("Stream canceled: ", response.error)
+        // Visible fork: runInterruptible so consumer cancellation interrupts this thread,
+        // reviving the InterruptedException handling (and device stream-cancel) below.
+        runInterruptible(Dispatchers.IO) {
+            txInterface.gattClientRequestStopScanning()
+            try {
+                synchronized(pftpOperationMutex) {
+                    if (pftpMtuEnabled?.get() == ATT_SUCCESS) {
+                        d(TAG, "Start write")
+                        currentOperationWrite.set(true)
+                        var pCounter: Long = 0
+                        resetMtuPipe()
+                        val headerSize = header.size
+                        val totalStream = BlePsFtpUtils.makeCompleteMessageStream(
+                            ByteArrayInputStream(header), data,
+                            BlePsFtpUtils.MessageType.REQUEST, 0
+                        )
+                        var next = 0
+                        val totalPayload = totalStream.available().toLong()
+                        val sequenceNumber = Rfc76SequenceNumber()
+                        val timeoutSeconds = getWriteTimeoutForFilePath(
+                            CommunicationsPftpRequest.PbPFtpOperation.parseFrom(header).path
+                        )
+                        var lastEmitTime = 0L
+                        do {
+                            val airPacket: ByteArray
+                            var counter = 0
+                            try {
+                                val temp = next
+                                airPacket = BlePsFtpUtils.buildRfc76MessageFrame(
+                                    totalStream, temp, mtuSize.get(), sequenceNumber
+                                )
+                                next = 1
+                                useAttributeLevelResponse.set((++pCounter % packetsCount.get()) == 0L)
+                                txInterface.transmitMessage(
+                                    BlePsFtpUtils.RFC77_PFTP_SERVICE,
+                                    BlePsFtpUtils.RFC77_PFTP_MTU_CHARACTERISTIC,
+                                    airPacket,
+                                    useAttributeLevelResponse.get()
+                                )
+                                if (totalStream.available() != 0) {
+                                    if (useAttributeLevelResponse.get()) {
+                                        packetsWrittenWithResponse.set(0)
+                                        waitPacketsWritten(packetsWrittenWithResponse, mtuWaiting, 1, timeoutSeconds)
+                                        packetsWritten.set(0)
+                                        counter = 0
                                     } else {
-                                        throw Throwable("Stream canceled")
+                                        ++counter
+                                    }
+                                    val packet = mtuInputQueue.poll()
+                                    if (packet != null && packet.second == 0) {
+                                        e(TAG, "Frame sending interrupted by device!")
+                                        val response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
+                                        if (response.status == 0) {
+                                            throw PftpResponseError("Stream canceled: ", response.error)
+                                        } else {
+                                            throw Throwable("Stream canceled")
+                                        }
                                     }
                                 }
+                                val bytesWritten = totalPayload - totalStream.available() - headerSize - 2
+                                val now = System.currentTimeMillis()
+                                val isFirst = lastEmitTime == 0L
+                                val isDone = totalStream.available() == 0
+                                val isTimeToEmit = (now - lastEmitTime) >= 5000L
+                                if (isFirst || isDone || isTimeToEmit) {
+                                    lastEmitTime = now
+                                    trySend(bytesWritten)
+                                }
+                            } catch (ex: InterruptedException) {
+                                e(TAG, "Frame sending interrupted!")
+                                handleMtuInterrupted(totalStream.available() != 0, counter)
+                                return@synchronized
                             }
-                            val bytesWritten = totalPayload - totalStream.available() - headerSize - 2
-                            val now = System.currentTimeMillis()
-                            val isFirst = lastEmitTime == 0L
-                            val isDone = totalStream.available() == 0
-                            val isTimeToEmit = (now - lastEmitTime) >= 5000L
-                            if (isFirst || isDone || isTimeToEmit) {
-                                lastEmitTime = now
-                                trySend(bytesWritten)
-                            }
+                        } while (totalStream.available() != 0)
+
+                        currentOperationWrite.set(false)
+                        val response = ByteArrayOutputStream()
+                        try {
+                            readResponse(response, timeoutSeconds)
                         } catch (ex: InterruptedException) {
-                            e(TAG, "Frame sending interrupted!")
-                            handleMtuInterrupted(totalStream.available() != 0, counter)
+                            e(TAG, "write interrupted while reading response")
                             return@synchronized
                         }
-                    } while (totalStream.available() != 0)
-
-                    currentOperationWrite.set(false)
-                    val response = ByteArrayOutputStream()
-                    try {
-                        readResponse(response, timeoutSeconds)
-                    } catch (ex: InterruptedException) {
-                        e(TAG, "write interrupted while reading response")
-                        return@synchronized
+                        // channel completes naturally on scope exit
+                    } else {
+                        throw BleCharacteristicNotificationNotEnabled("PS-FTP MTU not enabled")
                     }
-                    // channel completes naturally on scope exit
-                } else {
-                    throw BleCharacteristicNotificationNotEnabled("PS-FTP MTU not enabled")
                 }
+            } finally {
+                txInterface.gattClientResumeScanning()
+                currentOperationWrite.set(false)
             }
-        } finally {
-            txInterface.gattClientResumeScanning()
-            currentOperationWrite.set(false)
         }
     }.flowOn(Dispatchers.IO)
 
@@ -450,7 +457,9 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
      * @return [ByteArrayOutputStream] containing the query response
      * @throws Throwable on any error
      */
-    suspend fun query(id: Int, parameters: ByteArray?): ByteArrayOutputStream = withContext(Dispatchers.IO) {
+    suspend fun query(id: Int, parameters: ByteArray?): ByteArrayOutputStream = runInterruptible(Dispatchers.IO) {
+        // Visible fork: runInterruptible so consumer cancellation interrupts this thread,
+        // reviving the InterruptedException handling below.
         try {
             synchronized(pftpOperationMutex) {
                 if (pftpMtuEnabled?.get() == ATT_SUCCESS) {
@@ -500,7 +509,9 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
      * @param parameters matching parameter for PbPFtpHostToDevNotification value if any
      * @throws Throwable on any error
      */
-    suspend fun sendNotification(id: Int, parameters: ByteArray?) = withContext(Dispatchers.IO) {
+    suspend fun sendNotification(id: Int, parameters: ByteArray?) = runInterruptible(Dispatchers.IO) {
+        // Visible fork: runInterruptible so consumer cancellation interrupts this thread
+        // instead of leaving the caller blocked until the device responds or times out.
         try {
             synchronized(pftpNotificationMutex) {
                 if (txInterface.isConnected()) {
@@ -554,64 +565,74 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
 
     private fun buildNotificationFlow(): Flow<PftpNotificationMessage> = channelFlow {
         while (true) {
-            var pendingMessage: PftpNotificationMessage? = null
-            synchronized(pftpWaitNotificationMutex) {
-                if (pftpD2HNotificationEnabled?.get() == ATT_SUCCESS) {
-                    try {
-                        synchronized(notificationInputQueue) {
-                            if (notificationInputQueue.isEmpty()) {
-                                (notificationInputQueue as Object).wait()
-                            }
-                        }
-                    } catch (ex: InterruptedException) {
-                        e(TAG, "Wait notification interrupted")
-                        return@synchronized
-                    }
-                } else {
-                    throw BleCharacteristicNotificationNotEnabled("PS-FTP d2h notification not enabled")
-                }
-                try {
-                    var packet = notificationInputQueue.take()
-                    if (packet?.second == 0) {
-                        var response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
-                        if (response.payload != null) {
-                            if (response.next == 0) {
-                                val msg = PftpNotificationMessage()
-                                msg.id = response.payload!![0].toInt()
-                                response.payload?.let {
-                                    msg.byteArrayOutputStream.write(
-                                        it, 1, response.payload!!.size - 1
-                                    )
+            // Visible fork: runInterruptible so consumer cancellation interrupts this thread,
+            // reviving the InterruptedException handling below.
+            val pendingMessage: PftpNotificationMessage? = runInterruptible(Dispatchers.IO) {
+                synchronized(pftpWaitNotificationMutex) {
+                    if (pftpD2HNotificationEnabled?.get() == ATT_SUCCESS) {
+                        try {
+                            synchronized(notificationInputQueue) {
+                                if (notificationInputQueue.isEmpty()) {
+                                    (notificationInputQueue as Object).wait()
                                 }
-                                var status = response.status
-                                while (status == BlePsFtpUtils.RFC76_STATUS_MORE) {
-                                    packet = notificationInputQueue.poll(PROTOCOL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
-                                    if (packet != null && packet.second == 0) {
-                                        response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
-                                        status = response.status
-                                        d(TAG, "Message frame sub sequent packet successfully received")
-                                        response.payload?.let {
-                                            msg.byteArrayOutputStream.write(
-                                                it, 0, response.payload!!.size
-                                            )
-                                        }
-                                    } else {
-                                        throw Throwable("Failed to receive notification packet in timeline")
-                                    }
-                                }
-                                pendingMessage = msg
-                            } else {
-                                e(TAG, "wait notification not in sync, take next")
                             }
+                        } catch (ex: InterruptedException) {
+                            e(TAG, "Wait notification interrupted")
+                            return@synchronized null
                         }
                     } else {
-                        throw BleAttributeError("ps-ftp wait notification failure ", packet.second)
+                        throw BleCharacteristicNotificationNotEnabled("PS-FTP d2h notification not enabled")
                     }
-                } catch (ex: InterruptedException) {
-                    e(TAG, "wait notification interrupted")
-                    return@synchronized
-                } catch (throwable: Exception) {
-                    throw Exception("Notification receive failed", throwable)
+                    try {
+                        // Visible fork: reset() can empty the queue between the wait waking up
+                        // and here (disconnect racing a spurious notifyAll); poll() instead of
+                        // take() so we loop back and re-check state instead of blocking forever
+                        // on an empty queue while holding pftpWaitNotificationMutex.
+                        var packet = notificationInputQueue.poll() ?: return@synchronized null
+                        if (packet.second == 0) {
+                            var response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
+                            if (response.payload != null) {
+                                if (response.next == 0) {
+                                    val msg = PftpNotificationMessage()
+                                    msg.id = response.payload!![0].toInt()
+                                    response.payload?.let {
+                                        msg.byteArrayOutputStream.write(
+                                            it, 1, response.payload!!.size - 1
+                                        )
+                                    }
+                                    var status = response.status
+                                    while (status == BlePsFtpUtils.RFC76_STATUS_MORE) {
+                                        packet = notificationInputQueue.poll(PROTOCOL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
+                                        if (packet != null && packet.second == 0) {
+                                            response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first)
+                                            status = response.status
+                                            d(TAG, "Message frame sub sequent packet successfully received")
+                                            response.payload?.let {
+                                                msg.byteArrayOutputStream.write(
+                                                    it, 0, response.payload!!.size
+                                                )
+                                            }
+                                        } else {
+                                            throw Throwable("Failed to receive notification packet in timeline")
+                                        }
+                                    }
+                                    msg
+                                } else {
+                                    e(TAG, "wait notification not in sync, take next")
+                                    null
+                                }
+                            } else {
+                                null
+                            }
+                        } else {
+                            throw BleAttributeError("ps-ftp wait notification failure ", packet.second)
+                        }
+                    } catch (ex: InterruptedException) {
+                        e(TAG, "wait notification interrupted")
+                        return@synchronized null
+                    } catch (throwable: Exception) {
+                        throw Exception("Notification receive failed", throwable)
+                    }
                 }
             }
             pendingMessage?.let { send(it) }
@@ -644,6 +665,12 @@ class BlePsFtpClient(txInterface: BleGattTxInterface) :
                     }
                 }
             } else {
+                throw BleDisconnected("Connection lost during read response")
+            }
+            // Visible fork: reset() can empty the queue and wake us via notifyAll on
+            // disconnect; re-check connection before the long poll so disconnect fails fast
+            // instead of stalling for up to PROTOCOL_TIMEOUT_SECONDS.
+            if (!txInterface.isConnected()) {
                 throw BleDisconnected("Connection lost during read response")
             }
             val packet = mtuInputQueue.poll(PROTOCOL_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)

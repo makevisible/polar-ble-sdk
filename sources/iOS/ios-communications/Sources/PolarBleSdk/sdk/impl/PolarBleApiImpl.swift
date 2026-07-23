@@ -1267,7 +1267,7 @@ extension PolarBleApiImpl: PolarBleApi  {
     
     func listOfflineRecordings(_ identifier: String) -> AsyncThrowingStream<PolarOfflineRecordingEntry, Error> {
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     let session = try self.serviceClientUtils.sessionFtpClientReady(identifier)
                     guard let client = session.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
@@ -1305,6 +1305,9 @@ extension PolarBleApiImpl: PolarBleApi  {
                     continuation.finish(throwing: error)
                 }
             }
+            // Visible fork: without this, cancelling the stream's consumer never cancels
+            // the underlying Task, leaving the PFTP listing running to completion.
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

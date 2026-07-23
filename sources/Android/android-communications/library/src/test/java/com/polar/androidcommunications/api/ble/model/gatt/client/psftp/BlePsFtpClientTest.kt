@@ -7,12 +7,18 @@ import com.polar.androidcommunications.api.ble.model.gatt.client.psftp.BlePsFtpU
 import com.polar.androidcommunications.testrules.BleLoggerTestRule
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import java.io.ByteArrayOutputStream
 import java.util.*
+import kotlin.system.measureTimeMillis
 
 internal class BlePsFtpClientTest {
     @Rule
@@ -119,5 +125,29 @@ internal class BlePsFtpClientTest {
                 frame12.drop(1)).toByteArray()
 
         Assert.assertArrayEquals(expectedArray, output.toByteArray())
+    }
+
+    @Test
+    fun `test psftp client request cancellation interrupts blocking wait and unblocks caller`() = runBlocking {
+        // Arrange: local ATT writes succeed immediately, but the device never sends a response,
+        // so request() blocks forever in readResponse() unless cancellation interrupts it.
+        every { mockGattTxInterface.transmitMessages(any(), any(), any(), any()) } answers {
+            blePsFtpClient.processServiceDataWritten(RFC77_PFTP_MTU_CHARACTERISTIC, 0)
+        }
+        every { mockGattTxInterface.gattClientRequestStopScanning() } returns Unit
+        every { mockGattTxInterface.gattClientResumeScanning() } returns Unit
+
+        blePsFtpClient.descriptorWritten(RFC77_PFTP_MTU_CHARACTERISTIC, true, BleGattBase.ATT_SUCCESS)
+
+        val job = launch(Dispatchers.Default) {
+            blePsFtpClient.request(byteArrayOf(0x01))
+        }
+        // give request() time to actually reach the blocking readResponse() wait
+        delay(200)
+
+        val elapsedMs = measureTimeMillis { job.cancelAndJoin() }
+
+        assertTrue("cancellation should interrupt the blocking wait promptly, took ${elapsedMs}ms", elapsedMs < 5000)
+        verify(exactly = 1) { mockGattTxInterface.gattClientResumeScanning() }
     }
 }

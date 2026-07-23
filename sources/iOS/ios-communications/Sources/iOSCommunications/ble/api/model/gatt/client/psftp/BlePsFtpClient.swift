@@ -265,18 +265,44 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
         throw BlePsFtpException.operationCanceled
     }
     
-    fileprivate func transmitNotificationPacket(_ packet: Data, response: Bool) throws {
+    fileprivate func transmitNotificationPacket(_ packet: Data, response: Bool, canceled: BlockOperation) throws {
         if let transport = self.gattServiceTransmitter {
             try transport.transmitMessage(self, serviceUuid: BlePsFtpClient.PSFTP_SERVICE, characteristicUuid: BlePsFtpClient.PSFTP_H2D_NOTIFICATION_CHARACTERISTIC, packet: packet, withResponse: response)
             BleLogger.trace_hex("H2D send ", data: packet)
-            try self.waitPacketsWritten(self.notificationPacketsWritten, canceled: BlockOperation(), count: 1, timeout: PROTOCOL_TIMEOUT)
+            // Visible fork: takes the caller's BlockOperation (was a throwaway one) so
+            // consumer cancellation can actually interrupt this wait.
+            try self.waitPacketsWritten(self.notificationPacketsWritten, canceled: canceled, count: 1, timeout: PROTOCOL_TIMEOUT)
             return
         }
         throw BleGattException.gattTransportNotAvailable
     }
     
+    /// Guards a continuation so it's resumed at most once even when its own completion
+    /// races a Task cancellation — including the case where onCancel fires before the
+    /// underlying BlockOperation ever starts (queued-not-started, or cancelAllOperations()
+    /// on disconnect), which would otherwise leave the continuation unresumed forever.
+    private final class ContinuationOnce<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<T, Error>?
+
+        init(_ continuation: CheckedContinuation<T, Error>) {
+            self.continuation = continuation
+        }
+
+        func resume(with result: Result<T, Error>) {
+            lock.lock()
+            let cont = continuation
+            continuation = nil
+            lock.unlock()
+            switch result {
+            case .success(let value): cont?.resume(returning: value)
+            case .failure(let error): cont?.resume(throwing: error)
+            }
+        }
+    }
+
     // api
-    
+
     /// isBusy
     ///
     /// - Returns: true if any mtu or notification operations are queued for execute.
@@ -293,53 +319,73 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
 
     func request(_ header: Data, progressCallback: BlePsFtpProgressCallback?) async throws -> NSData {
         var shouldClearProgressCallback = self.progressCallback != nil
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NSData, Error>) in
-            let block = BlockOperation()
-            block.addExecutionBlock { [unowned self, weak block] in
-                BleLogger.trace("PS-FTP new request operation")
-                self.gattServiceTransmitter?.attributeOperationStarted()
-                defer { self.gattServiceTransmitter?.attributeOperationFinished() }
-                if !(block?.isCancelled ?? true) {
-                    self.resetMtuPipe()
-                    let totalStream = BlePsFtpUtility.makeCompleteMessageStream(header as Data, type: BlePsFtpUtility.MessageType.request, id: 0)
-                    let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
-                    totalStream.open()
-                    defer { totalStream.close() }
-                    var anySend = false
-                    do {
-                        let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
-                        for packet in requs {
-                            try self.transmitMtuPacket(packet, canceled: block ?? BlockOperation(), response: true, timeout: self.PROTOCOL_TIMEOUT)
-                            anySend = true
-                        }
-                        let outputStream = NSMutableData()
-                        let error = try self.readResponse(outputStream, inputQueue: self.mtuInputQueue, canceled: block ?? BlockOperation(), timeout: self.PROTOCOL_TIMEOUT)
-                        if shouldClearProgressCallback { self.progressCallback = nil }
-                        switch error {
-                        case 0:
-                            continuation.resume(returning: outputStream)
-                        default:
-                            continuation.resume(throwing: BlePsFtpException.responseError(errorCode: error))
-                        }
-                    } catch let error {
-                        self.logPsFtpError("PS-FTP request interrupted", error)
-                        if shouldClearProgressCallback { self.progressCallback = nil }
-                        if !(self.gattServiceTransmitter?.isConnected() ?? false) {
-                            continuation.resume(throwing: BleGattException.gattDisconnected)
-                        } else {
-                            if block?.isCancelled ?? true {
-                                do { if anySend { try self.sendMtuCancelPacket() } } catch { BleLogger.error("Stream cancelation failed") }
+        let block = BlockOperation()
+        var resumeOnce: ContinuationOnce<NSData>?
+        // Visible fork: withTaskCancellationHandler so consumer cancellation cancels the
+        // BlockOperation and wakes whichever condition it may already be blocked on
+        // (cancelling a BlockOperation alone never wakes an NSCondition wait). onCancel also
+        // resumes via ContinuationOnce — if it fires before the queue ever starts the block
+        // (queued-not-started, or cancelAllOperations() on disconnect), NSOperationQueue skips
+        // the execution block entirely and nothing else would ever resume the continuation.
+        return try await withTaskCancellationHandler(operation: {
+            // Visible fork: if the task is already cancelled, onCancel has fired before
+            // resumeOnce was assigned; bail out here instead of enqueueing a cancelled
+            // block whose continuation nothing would ever resume.
+            if Task.isCancelled { throw CancellationError() }
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NSData, Error>) in
+                let once = ContinuationOnce<NSData>(continuation)
+                resumeOnce = once
+                block.addExecutionBlock { [unowned self, weak block] in
+                    BleLogger.trace("PS-FTP new request operation")
+                    self.gattServiceTransmitter?.attributeOperationStarted()
+                    defer { self.gattServiceTransmitter?.attributeOperationFinished() }
+                    if !(block?.isCancelled ?? true) {
+                        self.resetMtuPipe()
+                        let totalStream = BlePsFtpUtility.makeCompleteMessageStream(header as Data, type: BlePsFtpUtility.MessageType.request, id: 0)
+                        let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
+                        totalStream.open()
+                        defer { totalStream.close() }
+                        var anySend = false
+                        do {
+                            let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
+                            for packet in requs {
+                                try self.transmitMtuPacket(packet, canceled: block ?? BlockOperation(), response: true, timeout: self.PROTOCOL_TIMEOUT)
+                                anySend = true
                             }
-                            continuation.resume(throwing: error)
+                            let outputStream = NSMutableData()
+                            let error = try self.readResponse(outputStream, inputQueue: self.mtuInputQueue, canceled: block ?? BlockOperation(), timeout: self.PROTOCOL_TIMEOUT)
+                            if shouldClearProgressCallback { self.progressCallback = nil }
+                            switch error {
+                            case 0:
+                                once.resume(with: .success(outputStream))
+                            default:
+                                once.resume(with: .failure(BlePsFtpException.responseError(errorCode: error)))
+                            }
+                        } catch let error {
+                            self.logPsFtpError("PS-FTP request interrupted", error)
+                            if shouldClearProgressCallback { self.progressCallback = nil }
+                            if !(self.gattServiceTransmitter?.isConnected() ?? false) {
+                                once.resume(with: .failure(BleGattException.gattDisconnected))
+                            } else {
+                                if block?.isCancelled ?? true {
+                                    do { if anySend { try self.sendMtuCancelPacket() } } catch { BleLogger.error("Stream cancelation failed") }
+                                }
+                                once.resume(with: .failure(error))
+                            }
                         }
+                    } else {
+                        if shouldClearProgressCallback { self.progressCallback = nil }
+                        once.resume(with: .failure(BlePsFtpException.operationCanceled))
                     }
-                } else {
-                    if shouldClearProgressCallback { self.progressCallback = nil }
-                    continuation.resume(throwing: BlePsFtpException.operationCanceled)
                 }
+                self.mtuOperationQueue.addOperation(block)
             }
-            self.mtuOperationQueue.addOperation(block)
-        }
+        }, onCancel: { [weak self] in
+            block.cancel()
+            self?.packetsWritten.signal()
+            self?.mtuInputQueue.signal()
+            resumeOnce?.resume(with: .failure(BlePsFtpException.operationCanceled))
+        })
     }
     
     /// Write a file to device. Yields progress updates and completes when write is acknowledged.
@@ -366,6 +412,13 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
 
         return AsyncThrowingStream<UInt, Error> { cont in
             let block = BlockOperation()
+            // Visible fork: without this, cancelling the stream's consumer never cancels
+            // the BlockOperation nor wakes whichever condition it may be blocked on.
+            cont.onTermination = { [weak self] _ in
+                block.cancel()
+                self?.packetsWritten.signal()
+                self?.mtuInputQueue.signal()
+            }
             block.addExecutionBlock { [unowned self, weak block] in
                 BleLogger.trace("PS-FTP new write operation")
                 self.gattServiceTransmitter?.attributeOperationStarted()
@@ -483,53 +536,71 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
     /// - Returns: response data
     open func query(_ id: Int, parameters: NSData?) async throws -> NSData {
         let parametersData: Data? = parameters.map { Data(referencing: $0) }
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NSData, Error>) in
-            let block = BlockOperation()
-            block.addExecutionBlock { [unowned self, weak block] in
-                BleLogger.trace("PS-FTP new query operation started for ID: \(id)")
-                defer { self.mtuInputQueue.removeAll() }
-                if !(block?.isCancelled ?? true) {
-                    self.mtuInputQueue.removeAll()
-                    let totalStream = BlePsFtpUtility.makeCompleteMessageStream(parametersData, type: BlePsFtpUtility.MessageType.query, id: id)
-                    totalStream.open()
-                    defer { totalStream.close() }
-                    do {
-                        let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
-                        let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
-                        for packet in requs {
-                            /* Passing a new BlockOperation() to transmitMtuPacket since query packets should not be canceled by the enclosing block's
-                             cancellation, as the device is expected to respond to all query packets even if the operation is canceled midway. Cancellation
-                             of the query operation will be handled by canceling the response waiting, and optionally sending a cancel packet if the error
-                             is not a timeout. */
-                            try self.transmitMtuPacket(packet, canceled: BlockOperation(), response: true, timeout: self.PROTOCOL_TIMEOUT)
-                        }
-                        let outputStream = NSMutableData()
-                        let error = try self.readResponse(outputStream, inputQueue: self.mtuInputQueue, canceled: block ?? BlockOperation(), timeout: self.PROTOCOL_TIMEOUT)
-                        switch error {
-                        case 0:  continuation.resume(returning: outputStream)
-                        default: continuation.resume(throwing: BlePsFtpException.responseError(errorCode: error))
-                        }
-                    } catch let error {
-                        self.logPsFtpError("PS-FTP query failed for ID=\(id)", error)
-                        if !(self.gattServiceTransmitter?.isConnected() ?? false) {
-                            continuation.resume(throwing: BleGattException.gattDisconnected)
-                        } else {
-                            if block?.isCancelled ?? false {
-                                if (error is AtomicIntegerException) && (error as! AtomicIntegerException) == .waitTimeout {
-                                    BleLogger.error("PS-FTP query timed out, no cancel packet sent for ID: \(id)")
-                                } else {
-                                    do { try self.sendMtuCancelPacket() } catch { BleLogger.error("Stream cancellation failed") }
-                                }
+        let block = BlockOperation()
+        var resumeOnce: ContinuationOnce<NSData>?
+        // Visible fork: withTaskCancellationHandler so consumer cancellation cancels the
+        // BlockOperation and wakes the response wait (transmit itself is intentionally
+        // left uncancelable above — see the comment on transmitMtuPacket below). onCancel also
+        // resumes via ContinuationOnce — if it fires before the queue ever starts the block,
+        // NSOperationQueue skips the execution block entirely and nothing else resumes it.
+        return try await withTaskCancellationHandler(operation: {
+            // Visible fork: if the task is already cancelled, onCancel has fired before
+            // resumeOnce was assigned; bail out here instead of enqueueing a cancelled
+            // block whose continuation nothing would ever resume.
+            if Task.isCancelled { throw CancellationError() }
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NSData, Error>) in
+                let once = ContinuationOnce<NSData>(continuation)
+                resumeOnce = once
+                block.addExecutionBlock { [unowned self, weak block] in
+                    BleLogger.trace("PS-FTP new query operation started for ID: \(id)")
+                    defer { self.mtuInputQueue.removeAll() }
+                    if !(block?.isCancelled ?? true) {
+                        self.mtuInputQueue.removeAll()
+                        let totalStream = BlePsFtpUtility.makeCompleteMessageStream(parametersData, type: BlePsFtpUtility.MessageType.query, id: id)
+                        totalStream.open()
+                        defer { totalStream.close() }
+                        do {
+                            let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
+                            let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
+                            for packet in requs {
+                                /* Passing a new BlockOperation() to transmitMtuPacket since query packets should not be canceled by the enclosing block's
+                                 cancellation, as the device is expected to respond to all query packets even if the operation is canceled midway. Cancellation
+                                 of the query operation will be handled by canceling the response waiting, and optionally sending a cancel packet if the error
+                                 is not a timeout. */
+                                try self.transmitMtuPacket(packet, canceled: BlockOperation(), response: true, timeout: self.PROTOCOL_TIMEOUT)
                             }
-                            continuation.resume(throwing: error)
+                            let outputStream = NSMutableData()
+                            let error = try self.readResponse(outputStream, inputQueue: self.mtuInputQueue, canceled: block ?? BlockOperation(), timeout: self.PROTOCOL_TIMEOUT)
+                            switch error {
+                            case 0:  once.resume(with: .success(outputStream))
+                            default: once.resume(with: .failure(BlePsFtpException.responseError(errorCode: error)))
+                            }
+                        } catch let error {
+                            self.logPsFtpError("PS-FTP query failed for ID=\(id)", error)
+                            if !(self.gattServiceTransmitter?.isConnected() ?? false) {
+                                once.resume(with: .failure(BleGattException.gattDisconnected))
+                            } else {
+                                if block?.isCancelled ?? false {
+                                    if (error is AtomicIntegerException) && (error as! AtomicIntegerException) == .waitTimeout {
+                                        BleLogger.error("PS-FTP query timed out, no cancel packet sent for ID: \(id)")
+                                    } else {
+                                        do { try self.sendMtuCancelPacket() } catch { BleLogger.error("Stream cancellation failed") }
+                                    }
+                                }
+                                once.resume(with: .failure(error))
+                            }
                         }
+                    } else {
+                        once.resume(with: .failure(BlePsFtpException.operationCanceled))
                     }
-                } else {
-                    continuation.resume(throwing: BlePsFtpException.operationCanceled)
                 }
+                self.mtuOperationQueue.addOperation(block)
             }
-            self.mtuOperationQueue.addOperation(block)
-        }
+        }, onCancel: { [weak self] in
+            block.cancel()
+            self?.mtuInputQueue.signal()
+            resumeOnce?.resume(with: .failure(BlePsFtpException.operationCanceled))
+        })
     }
     
     /// Sends a single notification to device.
@@ -538,31 +609,49 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
     ///   - parameters: optional parameters field
     open func sendNotification(_ id: Int, parameters: NSData?) async throws {
         let parametersData: Data? = parameters.map { Data(referencing: $0) }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let block = BlockOperation()
-            block.addExecutionBlock { [unowned self, weak block] in
-                BleLogger.trace("PS-FTP new notification operation started for ID: \(id)")
-                if !(block?.isCancelled ?? true) {
-                    let totalStream = BlePsFtpUtility.makeCompleteMessageStream(parametersData, type: BlePsFtpUtility.MessageType.notification, id: id)
-                    totalStream.open()
-                    defer { totalStream.close() }
-                    self.notificationPacketsWritten.set(0)
-                    do {
+        let block = BlockOperation()
+        var resumeOnce: ContinuationOnce<Void>?
+        // Visible fork: withTaskCancellationHandler so consumer cancellation cancels the
+        // BlockOperation and wakes the write-ack wait it may already be blocked on. onCancel
+        // also resumes via ContinuationOnce — if it fires before the queue ever starts the
+        // block, NSOperationQueue skips the execution block entirely and nothing else
+        // resumes it.
+        try await withTaskCancellationHandler(operation: {
+            // Visible fork: if the task is already cancelled, onCancel has fired before
+            // resumeOnce was assigned; bail out here instead of enqueueing a cancelled
+            // block whose continuation nothing would ever resume.
+            if Task.isCancelled { throw CancellationError() }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let once = ContinuationOnce<Void>(continuation)
+                resumeOnce = once
+                block.addExecutionBlock { [unowned self, weak block] in
+                    BleLogger.trace("PS-FTP new notification operation started for ID: \(id)")
+                    if !(block?.isCancelled ?? true) {
+                        let totalStream = BlePsFtpUtility.makeCompleteMessageStream(parametersData, type: BlePsFtpUtility.MessageType.notification, id: id)
+                        totalStream.open()
+                        defer { totalStream.close() }
                         self.notificationPacketsWritten.set(0)
-                        let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
-                        let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
-                        for packet in requs { try self.transmitNotificationPacket(packet, response: true) }
-                        continuation.resume()
-                    } catch let error {
-                        BleLogger.error("PS-FTP notification send interrupted error for ID: \(id) - \(error)")
-                        continuation.resume(throwing: error)
+                        do {
+                            self.notificationPacketsWritten.set(0)
+                            let sequenceNumber = BlePsFtpUtility.BlePsFtpRfc76SequenceNumber()
+                            let requs = BlePsFtpUtility.buildRfc76MessageFrameAll(totalStream, mtuSize: self.mtuSize, sequenceNumber: sequenceNumber)
+                            for packet in requs { try self.transmitNotificationPacket(packet, response: true, canceled: block ?? BlockOperation()) }
+                            once.resume(with: .success(()))
+                        } catch let error {
+                            BleLogger.error("PS-FTP notification send interrupted error for ID: \(id) - \(error)")
+                            once.resume(with: .failure(error))
+                        }
+                    } else {
+                        once.resume(with: .failure(BlePsFtpException.operationCanceled))
                     }
-                } else {
-                    continuation.resume(throwing: BlePsFtpException.operationCanceled)
                 }
+                self.sendNotificationOperationQueue.addOperation(block)
             }
-            self.sendNotificationOperationQueue.addOperation(block)
-        }
+        }, onCancel: { [weak self] in
+            block.cancel()
+            self?.notificationPacketsWritten.signal()
+            resumeOnce?.resume(with: .failure(BlePsFtpException.operationCanceled))
+        })
     }
     
     /// Waits for device notifications indefinitely, yielding each notification as it arrives.
@@ -571,6 +660,14 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
     open func waitNotification() -> AsyncThrowingStream<PsFtpNotification, Error> {
         return AsyncThrowingStream<PsFtpNotification, Error> { cont in
             let block = BlockOperation()
+            // Visible fork: mandatory fix — without this, cancelling the stream's consumer
+            // cancels the BlockOperation but never wakes the indefinite
+            // pollUntilSignaled() wait, so it (and the serial waitNotificationOperationQueue
+            // behind it) hangs until the next real D2H notification or a full disconnect.
+            cont.onTermination = { [weak self] _ in
+                block.cancel()
+                self?.notificationInputQueue.signal()
+            }
             block.addExecutionBlock { [unowned self, weak block] in
                 BleLogger.trace("PS-FTP wait notification operation started")
                 if !(block?.isCancelled ?? true) {
@@ -617,15 +714,27 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
 
     public func waitPsFtpReady(_ checkConnection: Bool) async throws {
         var cancellable: AnyCancellable?
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            cancellable = clientReady(checkConnection)
-                .sink(receiveCompletion: { completion in
-                    switch completion {
-                    case .finished: continuation.resume()
-                    case .failure(let error): continuation.resume(throwing: error)
-                    }
-                }, receiveValue: { _ in })
-        }
+        var resumeOnce: ContinuationOnce<Void>?
+        // Visible fork: withTaskCancellationHandler so a cancelled caller doesn't wait for
+        // clientReady() to resolve on its own (device connect / notification enable).
+        // ContinuationOnce guards against onCancel racing the Combine completion.
+        try await withTaskCancellationHandler(operation: {
+            if Task.isCancelled { throw CancellationError() }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let once = ContinuationOnce<Void>(continuation)
+                resumeOnce = once
+                cancellable = clientReady(checkConnection)
+                    .sink(receiveCompletion: { completion in
+                        switch completion {
+                        case .finished: once.resume(with: .success(()))
+                        case .failure(let error): once.resume(with: .failure(error))
+                        }
+                    }, receiveValue: { _ in })
+            }
+        }, onCancel: {
+            resumeOnce?.resume(with: .failure(CancellationError()))
+            cancellable?.cancel()
+        })
         cancellable?.cancel()
     }
 

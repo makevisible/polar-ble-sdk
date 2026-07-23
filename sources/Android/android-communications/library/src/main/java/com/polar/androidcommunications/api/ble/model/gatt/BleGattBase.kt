@@ -7,6 +7,7 @@ import com.polar.androidcommunications.api.ble.exceptions.BleCharacteristicNotFo
 import com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
 import com.polar.androidcommunications.common.ble.AtomicSet
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -331,12 +332,15 @@ abstract class BleGattBase {
      * @throws BleAttributeError if the notification/indication setup failed
      * @throws BleCharacteristicNotFound if the characteristic is not registered
      */
-    suspend fun waitNotificationEnabled(uuid: UUID, checkConnection: Boolean) = withContext(Dispatchers.IO) {
+    suspend fun waitNotificationEnabled(uuid: UUID, checkConnection: Boolean) = runInterruptible(Dispatchers.IO) {
+        // Visible fork: runInterruptible so consumer cancellation interrupts this thread
+        // instead of leaving every waitNotificationEnabled caller (PS-FTP, PMD, PFC, RSC, PSD)
+        // blocked indefinitely on a characteristic that never gets enabled.
         val integer = getNotificationAtomicInteger(uuid)
             ?: throw BleCharacteristicNotFound()
         if (!checkConnection || txInterface.isConnected()) {
             when {
-                integer.get() == ATT_SUCCESS -> return@withContext
+                integer.get() == ATT_SUCCESS -> return@runInterruptible
                 integer.get() != -1 -> throw BleAttributeError(
                     "Failed to set characteristic notification or indication ", integer.get()
                 )

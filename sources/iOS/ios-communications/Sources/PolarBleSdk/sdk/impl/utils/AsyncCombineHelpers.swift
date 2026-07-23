@@ -6,9 +6,12 @@ import Combine
 
 /// Convert an async throwing function that returns a value into an AnyPublisher.
 func asyncPublisher<T>(_ operation: @escaping () async throws -> T) -> AnyPublisher<T, Error> {
-    Deferred {
-        Future { promise in
-            Task {
+    Deferred { () -> AnyPublisher<T, Error> in
+        // Visible fork: capture the Task so a Combine cancel (below) can cancel it —
+        // Future's promise closure gives no cancellation hook of its own.
+        var task: Task<Void, Never>?
+        let future = Future<T, Error> { promise in
+            task = Task {
                 do {
                     let result = try await operation()
                     promise(.success(result))
@@ -17,6 +20,9 @@ func asyncPublisher<T>(_ operation: @escaping () async throws -> T) -> AnyPublis
                 }
             }
         }
+        return future
+            .handleEvents(receiveCancel: { task?.cancel() })
+            .eraseToAnyPublisher()
     }.eraseToAnyPublisher()
 }
 

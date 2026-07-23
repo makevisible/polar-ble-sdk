@@ -246,4 +246,33 @@ class BlePsFtpClientTest: XCTestCase {
             }
         }
     }
+
+    // GIVEN a first waitNotification() consumer that is cancelled while nothing ever arrives
+    // WHEN a second waitNotification() call is made afterwards
+    // THEN the second call still receives notifications promptly — the cancelled first
+    // operation must not zombie-block the serial waitNotificationOperationQueue behind it
+    func testWaitNotificationCancellationDoesNotStarveNextCall() async throws {
+        // Arrange: first consumer starts waiting, nothing ever arrives for it
+        let firstTask = Task<Void, Error> {
+            for try await _ in blePsFtpClient.waitNotification() { }
+        }
+        try await Task.sleep(nanoseconds: 200_000_000) // let it actually enter the blocking wait
+        firstTask.cancel()
+        _ = try? await firstTask.value
+        try await Task.sleep(nanoseconds: 200_000_000) // let cancellation actually free the queue
+
+        let psftpNotifcationId = Data([0x01])
+        let psftpNotificationParams = Data([0xFF, 0x00])
+        var notificationFromDevice = Data([0x02]) // rfc76 header: single frame
+        notificationFromDevice.append(psftpNotifcationId)
+        notificationFromDevice.append(psftpNotificationParams)
+        let characteristic: CBUUID = BlePsFtpClient.PSFTP_D2H_NOTIFICATION_CHARACTERISTIC
+
+        // Act: a fresh call must not be stuck behind the cancelled first operation
+        blePsFtpClient.processServiceData(characteristic, data: notificationFromDevice, err: 0)
+        let event = try await firstNotification(from: blePsFtpClient.waitNotification(), timeout: 3.0)
+
+        // Assert
+        XCTAssertEqual(Int32(psftpNotifcationId[0]), event?.id)
+    }
 }
