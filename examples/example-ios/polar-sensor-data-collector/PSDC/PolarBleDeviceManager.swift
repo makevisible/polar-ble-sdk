@@ -34,13 +34,14 @@ class PolarBleDeviceManager: ObservableObject {
     
     func setSearchPrefix(_ prefix: String) {
         deviceSearchNamePrefix = prefix
+        startDevicesSearch()
+    }
+    
+    func startDevicesSearch() {
         searchDevicesTask?.cancel()
         searchDevicesTask = nil
         deviceSearch.foundDevices.removeAll()
         deviceSearch.isSearching = .notStarted
-    }
-    
-    func startDevicesSearch() {
         searchDevicesTask = Task {
             await searchDevicesAsync()
         }
@@ -98,11 +99,21 @@ class PolarBleDeviceManager: ObservableObject {
         if let (_, manager) = managersByDeviceId[device.deviceId] {
             manager.disconnectFromDevice(device: device)
         }
+        managersByDeviceId.removeValue(forKey: device.deviceId)
         return managersByDeviceId.values.first
     }
     
     func disconnectAll() {
-        managersByDeviceId.values.forEach { $0.1.disconnectFromDevice(device: $0.0) }
+        // Collect device info before iterating to avoid mutation during iteration
+        let devicesToDisconnect = managersByDeviceId.values.map { ($0.0, $0.1) }
+
+        // Disconnect all devices
+        devicesToDisconnect.forEach { (deviceInfo, manager) in
+            manager.disconnectFromDevice(device: deviceInfo)
+        }
+
+        // Clear the dictionary after all disconnections
+        managersByDeviceId.removeAll()
     }
     
     func connectedDevices() -> [PolarDeviceInfo] {

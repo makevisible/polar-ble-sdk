@@ -14,13 +14,14 @@ public enum PmdMeasurementType: UInt8, CaseIterable, Sendable {
     case temperature = 12
     case offline_recording = 13
     case offline_hr = 14
+    case derivedMeasurement = 15
     case unknown_type = 0x3f
     
     private static let MEASUREMENT_BIT_MASK: UInt8 = 0x3F
     
-    func isDataType() -> Bool {
+    func isRawMeasurementDataType() -> Bool {
         switch(self) {
-        case .sdkMode, .offline_recording, .unknown_type:
+        case .sdkMode, .offline_recording, .derivedMeasurement, .unknown_type:
             return false
         default :
             return true

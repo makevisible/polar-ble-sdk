@@ -11,6 +11,7 @@ private let dateFormat: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyyMMdd"
     formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(abbreviation: "UTC")
     return formatter
 }()
 private let TAG = "PolarSleepUtils"

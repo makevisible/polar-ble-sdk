@@ -14,6 +14,7 @@ struct ActivityRecordingDetailsView: View {
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter
     }()
     

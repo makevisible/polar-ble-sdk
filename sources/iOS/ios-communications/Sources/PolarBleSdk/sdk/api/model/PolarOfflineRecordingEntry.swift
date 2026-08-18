@@ -12,11 +12,14 @@ public struct PolarOfflineRecordingEntry : Equatable {
     public let date: Date
     ///  data type of the recording
     public let type: PolarDeviceDataType
-    
-    public init(path: String, size: UInt, date: Date, type: PolarDeviceDataType) {
+    /// Derived measurement settings group ID associated with this recording. Defaults to 0.
+    public let groupId: Int
+
+    public init(path: String, size: UInt, date: Date, type: PolarDeviceDataType, groupId: Int = 0) {
         self.path = path
         self.size = size
         self.date = date
         self.type = type
+        self.groupId = groupId
     }
 }

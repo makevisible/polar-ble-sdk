@@ -14,6 +14,10 @@ message PbPFtpFactoryResetParams {
   required bool sleep = 1;
   optional bool do_factory_defaults = 2 [default = true];
   optional bool ota_fwupdate = 3 [default = false];
+  // If true, the device should go to hibernate instead of the shelf/storage mode. Hibernate consumes slightly
+  // more battery than storage mode, but retains device time. In hibernate battery should last for tens, or even
+  // hundreds of days.
+  optional bool hibernate = 4 [default = false];
 }
 
 message PbPFtpStopSyncParams {

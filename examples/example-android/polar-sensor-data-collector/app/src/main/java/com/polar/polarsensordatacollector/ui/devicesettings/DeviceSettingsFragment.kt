@@ -19,9 +19,11 @@ import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.util.Pair
+import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
@@ -36,10 +38,12 @@ import com.google.gson.GsonBuilder
 import com.polar.polarsensordatacollector.R
 import com.polar.polarsensordatacollector.repository.SdkMode
 import com.polar.polarsensordatacollector.ui.activity.ActivityRecordingFragmentDirections
+import com.polar.polarsensordatacollector.ui.landing.MainViewModel
 import com.polar.polarsensordatacollector.ui.exercise.ExerciseActivity
 import com.polar.polarsensordatacollector.ui.genericapi.GenericApiActivity
 import com.polar.polarsensordatacollector.ui.utils.showSnackBar
 import com.polar.sdk.api.PolarBleApi
+import com.polar.sdk.api.PolarDeviceTelemetryType
 import com.polar.sdk.api.model.CheckFirmwareUpdateStatus
 import com.polar.sdk.api.model.PolarDiskSpaceData
 import com.polar.sdk.api.model.PolarPhysicalConfiguration
@@ -58,7 +62,8 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         private const val TAG = "DeviceSettingsFragment"
     }
 
-    private val viewModel: DeviceSettingsViewModel by viewModels()
+    private lateinit var viewModel: DeviceSettingsViewModel
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     private lateinit var sdkModeGroup: ConstraintLayout
     private lateinit var sdkModeToggleButton: Button
@@ -99,6 +104,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     private lateinit var dofactoryResetGroup: ConstraintLayout
     private lateinit var dofactoryResetButton: Button
     private lateinit var dofactoryResetHeader: TextView
+    private lateinit var doFactoryResetPreservePairingSwitch: SwitchMaterial
 
     private lateinit var setExerciseGroup: ConstraintLayout
     private lateinit var setExerciseButton: Button
@@ -106,6 +112,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
     private lateinit var setWareHouseSleepGroup: ConstraintLayout
     private lateinit var setWareHouseSleepButton: Button
+    private lateinit var setHibernateModeButton: Button
     private lateinit var setWareHouseSleepHeader: TextView
 
     private lateinit var setTurnDeviceOffGroup: ConstraintLayout
@@ -148,9 +155,14 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     private lateinit var bleMultiConnectionEnableButton: Button
     private lateinit var bleMultiConnectionEnabledSwitch: SwitchMaterial
 
+    private lateinit var sensorInitiatedSecurityModeEnableHeader: TextView
+    private lateinit var sensorInitiatedSecurityModeEnableButton: Button
+    private lateinit var sensorInitiatedSecurityModeEnableSwitch: SwitchMaterial
+
     private lateinit var sleepRecordingStateHeader: TextView
     private lateinit var forceStopSleepButton: Button
     private lateinit var forceStopSleepGroup: ConstraintLayout
+    private lateinit var getSleepRecordingStateButton: Button
 
     private lateinit var batteryLevelGroup: ConstraintLayout
     private lateinit var getBatteryLevelHeader: TextView
@@ -161,6 +173,13 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
     private lateinit var getBLESignalStrengthHeader: TextView
     private lateinit var getBLESignalStrengthButton: Button
+
+    private lateinit var telemetryType: PolarDeviceTelemetryType
+    private lateinit var startTelemetryButton: Button
+    private lateinit var telemetryGroup: ConstraintLayout
+    private lateinit var startTelemetryText: TextView
+    private lateinit var telemetryTypeSelectionSpinner: Spinner
+    private var telemetryStreamOngoing = false
 
     private lateinit var genericButton: Button
     private lateinit var genericText: TextView
@@ -173,6 +192,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        viewModel = ViewModelProvider(this)[DeviceSettingsViewModel::class.java]
         setupViews(view)
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -210,14 +230,12 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiShowError.collect {
-                    if (it.header.isNotEmpty()) {
                         showSnackBar(
                             rootView = requireView(),
                             it.header,
                             it.description ?: "",
                             showAsError = true
                         )
-                    }
                 }
             }
         }
@@ -225,9 +243,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiShowInfo.collect {
-                    if (it.header.isNotEmpty()) {
-                        showSnackBar(rootView = requireView(), it.header, it.description ?: "")
-                    }
+                        showSnackBar(rootView = requireView(), it.header, it.description ?: "", timeout = it.timeout)
                 }
             }
         }
@@ -253,7 +269,8 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiMultiBleModeState.collect { bleMultiConnectionStateChange(it)
+                viewModel.uiMultiBleModeState.collect {
+                    bleMultiConnectionStateChange(it)
                 }
             }
         }
@@ -277,7 +294,24 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiDeviceToHostNotificationsState.collect { state ->
-                    deviceToHostNotificationsButton.text = if (state.isObserving) "Stop" else "Start"
+                    deviceToHostNotificationsButton.text =
+                        if (state.isObserving) "Stop" else "Start"
+                }
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiSensorInitiatedSecurityModeState.collect {
+                    sensorInitiatedSecurityModeStateChange(it)
+                }
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiTelemetryState.collect {
+                    telemetryStateChange(it)
                 }
             }
         }
@@ -318,7 +352,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             viewLifecycleOwner.lifecycleScope.launch {
                 viewModel.getUserPhysicalInfo().run {
                     val ftu = viewModel.physInfo
-                    if (ftu != null ) {
+                    if (ftu != null) {
                         showUserPhysicalInfoDialog(ftu)
                     }
                 }
@@ -331,14 +365,17 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         doRestartButton.setOnClickListener {
             viewModel.doRestart()
+            mainViewModel.requestRemoveOnlineOfflineFragments()
         }
 
         dofactoryResetButton.setOnClickListener {
+            val preservePairing = doFactoryResetPreservePairingSwitch.isChecked
             AlertDialog.Builder(requireContext())
                 .setTitle(getString(R.string.do_factory_reset_header))
                 .setMessage(getString(R.string.confirm_factory_reset))
                 .setPositiveButton(getString(R.string.confirm)) { _, _ ->
-                    viewModel.doFactoryReset()
+                    viewModel.doFactoryReset(preservePairingInformation = preservePairing)
+                    mainViewModel.requestRemoveOnlineOfflineFragments()
                 }
                 .setNegativeButton(getString(R.string.cancel), null)
                 .show()
@@ -346,10 +383,17 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         setWareHouseSleepButton.setOnClickListener {
             viewModel.setWarehouseSleep()
+            mainViewModel.requestRemoveOnlineOfflineFragments()
+        }
+
+        setHibernateModeButton.setOnClickListener {
+            viewModel.setHibernateMode()
+            mainViewModel.requestRemoveOnlineOfflineFragments()
         }
 
         setTurnDeviceOffButton.setOnClickListener {
             viewModel.setTurnDeviceOff()
+            mainViewModel.requestRemoveOnlineOfflineFragments()
         }
 
         doFirmwareUpdateButton.setOnClickListener {
@@ -453,7 +497,24 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
                 viewModel.forceStopSleep()
             } catch (e: Exception) {
                 Log.e(TAG, "An error occurred while forcing sleep recording to stop: ", e)
-                Toast.makeText(this.context, "An error occurred while forcing sleep recording to stop. Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this.context,
+                    "An error occurred while forcing sleep recording to stop. Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
+        getSleepRecordingStateButton.setOnClickListener {
+            try {
+                viewModel.getSleepRecordingState()
+            } catch (e: Exception) {
+                Log.e(TAG, "An error occurred while getting sleep recording state: ", e)
+                Toast.makeText(
+                    this.context,
+                    "An error occurred while getting sleep recording state. Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -462,7 +523,11 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
                 viewModel.getChargeState()
             } catch (e: Exception) {
                 Log.e(TAG, "An error occurred while getting charge state: ", e)
-                Toast.makeText(this.context, "An error occurred while getting charge status. Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this.context,
+                    "An error occurred while getting charge status. Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -471,7 +536,11 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
                 viewModel.getBLESignalStrength()
             } catch (e: Exception) {
                 Log.e(TAG, "An error occurred while getting BLE signal strength: ", e)
-                Toast.makeText(this.context, "An error occurred while getting BLE signal strength. Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this.context,
+                    "An error occurred while getting BLE signal strength. Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -479,15 +548,15 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         genericText.alpha = 0F
 
         genericButton.setOnClickListener {
-                if (genericButtonCounter == 8){
-                    genericButton.alpha = 1F
-                    genericText.alpha = 1F
-                }
-                if (genericButtonCounter >= 9){
-                    GenericApiActivity.launch(requireContext())
-                } else {
-                    genericButtonCounter++
-                }
+            if (genericButtonCounter == 8) {
+                genericButton.alpha = 1F
+                genericText.alpha = 1F
+            }
+            if (genericButtonCounter >= 9) {
+                GenericApiActivity.launch(requireContext())
+            } else {
+                genericButtonCounter++
+            }
         }
 
         bleErrorTestButton.setOnClickListener {
@@ -495,7 +564,11 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
                 viewModel.checkIfDeviceDisconnectedDueRemovedPairing()
             } catch (e: Exception) {
                 Log.e(TAG, "An error occurred while getting possible BLE connection problems: ", e)
-                Toast.makeText(this.context, "An error occurred while getting BLE connection problems. Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this.context,
+                    "An error occurred while getting BLE connection problems. Error: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -519,13 +592,49 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             }
         }
 
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.telemetryAvailable.collect { available ->
+                    telemetryGroup.visibility = if (available) VISIBLE else GONE
+                    startTelemetryButton.isEnabled = available
+                }
+            }
+        }
+
         bleMultiConnectionEnableButton.setOnClickListener {
             val enableDisableBleMultiConnection = bleMultiConnectionEnabledSwitch.isChecked
             viewModel.setBleMultiConnection(enabled = enableDisableBleMultiConnection)
         }
 
+        sensorInitiatedSecurityModeEnableButton.setOnClickListener {
+            val enableSensorInitiatedSecurityMode =
+                sensorInitiatedSecurityModeEnableSwitch.isChecked
+            viewModel.setSensorInitiatedSecurityMode(enabled = enableSensorInitiatedSecurityMode)
+        }
+
         view.findViewById<Button>(R.id.watch_face_complications_button).setOnClickListener {
             com.polar.polarsensordatacollector.ui.watchface.WatchFaceActivity.launch(requireContext())
+        }
+
+        startTelemetryButton.setOnClickListener {
+            telemetryType =
+                PolarDeviceTelemetryType.values()[telemetryTypeSelectionSpinner.selectedItemPosition]
+            if (telemetryStreamOngoing) {
+                telemetryStreamOngoing = false
+                startTelemetryButton.text = getString(R.string.start_button)
+                viewModel.stopTelemetryStream()
+            } else {
+                telemetryStreamOngoing = true
+                startTelemetryButton.text = getString(R.string.stop_button)
+                try {
+                    viewModel.startTelemetryStream(telemetryType)
+                } catch (e: Exception) {
+                    Log.e(TAG, "An error occurred while starting telemetry stream: ", e)
+                    telemetryStreamOngoing = false
+                    startTelemetryButton.text = getString(R.string.start_button)
+
+                }
+            }
         }
     }
 
@@ -571,6 +680,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         dofactoryResetGroup = view.findViewById(R.id.do_factory_reset_group)
         dofactoryResetButton = view.findViewById(R.id.do_factory_reset_button)
         dofactoryResetHeader = view.findViewById(R.id.do_factory_reset_header)
+        doFactoryResetPreservePairingSwitch = view.findViewById(R.id.do_factory_reset_preserve_pairing_switch)
 
         setExerciseGroup = view.findViewById(R.id.set_exercise_group)
         setExerciseButton = view.findViewById(R.id.set_exercise_button)
@@ -579,6 +689,7 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         setWareHouseSleepGroup = view.findViewById(R.id.set_warehouse_sleep_group)
         setWareHouseSleepButton = view.findViewById(R.id.set_warehouse_sleep_button)
         setWareHouseSleepHeader = view.findViewById(R.id.set_warehouse_sleep_button_header)
+        setHibernateModeButton = view.findViewById(R.id.set_hibernate_mode_button)
 
         setTurnDeviceOffGroup = view.findViewById(R.id.set_warehouse_sleep_group)
         setTurnDeviceOffButton = view.findViewById(R.id.set_turn_device_off_button)
@@ -593,6 +704,8 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
         sleepRecordingStateHeader = view.findViewById(R.id.force_stop_sleep_header)
         forceStopSleepButton = view.findViewById(R.id.force_stop_sleep_button)
+        getSleepRecordingStateButton = view.findViewById(R.id.get_sleep_status_button)
+
         genericButton = view.findViewById(R.id.generic_api_button)
         genericText = view.findViewById(R.id.generic_api_header)
         bleErrorTestButton = view.findViewById(R.id.ble_error_test_button)
@@ -642,6 +755,12 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         bleMultiConnectionEnabledSwitch =
             view.findViewById(R.id.multi_ble_settings_enabled)
 
+        sensorInitiatedSecurityModeEnableButton = view.findViewById(R.id.sensor_initiated_security_mode_enable_button)
+        sensorInitiatedSecurityModeEnableHeader =
+            view.findViewById(R.id.sensor_initiated_security_mode_enable_header)
+        sensorInitiatedSecurityModeEnableSwitch =
+            view.findViewById(R.id.sensor_initiated_security_mode_enable_switch)
+
         forceStopSleepButton = view.findViewById(R.id.force_stop_sleep_button)
         forceStopSleepGroup = view.findViewById(R.id.force_stop_sleep_group)
 
@@ -653,6 +772,19 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         getBLESignalStrengthHeader = view.findViewById(R.id.ble_signal_strength_header)
 
         watchFaceComplicationsGroup = view.findViewById(R.id.watch_face_complications_group)
+
+        telemetryGroup = view.findViewById(R.id.telemetry_group)
+        startTelemetryButton = view.findViewById(R.id.telemetry_button)
+        startTelemetryText = view.findViewById(R.id.ble_signal_strength_button)
+        telemetryTypeSelectionSpinner = view.findViewById(R.id.telemetry_type_selection_drop_down)
+        val telemetryTypeSelectionSpinnerAdapter = ArrayAdapter(
+            requireContext(),
+            android.R.layout.simple_spinner_dropdown_item,
+            PolarDeviceTelemetryType.values().map { it.displayName }
+        )
+
+        telemetryTypeSelectionSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        telemetryTypeSelectionSpinner.adapter = telemetryTypeSelectionSpinnerAdapter
     }
 
     private fun settingsSupportUiState(settingsSupportUiState: SettingsSupportUiState) {
@@ -666,7 +798,6 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
             userDataDeletionSelectGroup.visibility = GONE
             setExerciseGroup.visibility = GONE
             waitForConnectionStatusGroup.visibility = GONE
-            userDataDeletionSelectGroup.visibility = GONE
             getDiskSpaceGroup.visibility = GONE
             batteryLevelGroup.visibility = GONE
             forceStopSleepGroup.visibility = GONE
@@ -734,6 +865,15 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
         }
     }
 
+    private fun telemetryStateChange(telemetryUiState: TelemetryUiState) {
+        if (telemetryUiState.isAvailable) {
+            startTelemetryText.text = R.string.start_button.toString()
+            telemetryGroup.visibility = VISIBLE
+        } else {
+            telemetryGroup.visibility = GONE
+        }
+    }
+
     private fun writeTimeUiState(it: StatusWriteTime) {
         when (it) {
             StatusWriteTime.Completed -> {
@@ -769,6 +909,10 @@ class DeviceSettingsFragment : Fragment(R.layout.fragment_device_settings) {
 
     private fun bleMultiConnectionStateChange(status: BleMultiConnectionUiState) {
         bleMultiConnectionEnabledSwitch.isChecked = status.isEnabled
+    }
+
+    private fun sensorInitiatedSecurityModeStateChange(status: SensorInitiatedSecurityModeUiState) {
+        sensorInitiatedSecurityModeEnableSwitch.isChecked = status.isEnabled
     }
 
     private fun showDataDeleteDatePicker() {

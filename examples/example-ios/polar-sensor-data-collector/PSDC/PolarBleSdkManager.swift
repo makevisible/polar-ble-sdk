@@ -40,37 +40,38 @@ class PolarBleSdkManager : ObservableObject {
     
     @Published var switchableDevices: [PolarDeviceInfo] = []
     
-    @Published var onlineStreamingFeature: OnlineStreamingFeature = OnlineStreamingFeature()
+    @Published var onlineStreamingFeature = OnlineStreamingFeature()
     @Published var onlineStreamSettings: RecordingSettings? = nil
-    
+    @Published var savedOnlineStreamSettings: [PolarDeviceDataType: RecordingSettings] = [:]
+
     @Published var offlineRecordingFeature = OfflineRecordingFeature()
     @Published var offlineRecordingSettings: RecordingSettings? = nil
     @Published var offlineRecordingSettingsMap: [PolarDeviceDataType: RecordingSettings] = [:]
-    @Published var offlineRecordingEntries: OfflineRecordingEntries = OfflineRecordingEntries()
-    @Published var offlineRecordingData: OfflineRecordingData = OfflineRecordingData()
+    @Published var offlineRecordingEntries = OfflineRecordingEntries()
+    @Published var offlineRecordingData = OfflineRecordingData()
     @Published var offlineRecordingTriggerSetup: PolarOfflineRecordingTrigger?
-    @Published var activityRecordingData: ActivityRecordingData = ActivityRecordingData()
+    @Published var activityRecordingData = ActivityRecordingData()
     @Published var onlineRecordingDataTypes: [PolarDeviceDataType] = []
     
-    @Published var offlineExerciseV2Feature = OfflineExerciseV2Feature()
+    @Published var offlineExerciseV2Feature = FeatureSupported()
 
-    @Published var deviceTimeSetupFeature: DeviceTimeSetupFeature = DeviceTimeSetupFeature()
+    @Published var deviceTimeSetupFeature = FeatureSupported()
     
-    @Published var sdkModeFeature: SdkModeFeature = SdkModeFeature()
+    @Published var sdkModeFeature = FeatureSupported()
     
-    @Published var h10RecordingFeature: H10RecordingFeature = H10RecordingFeature()
+    @Published var h10RecordingFeature = H10RecordingFeature()
     
-    @Published var deviceInfoFeature: DeviceInfoFeature = DeviceInfoFeature()
+    @Published var deviceInfoFeature = DeviceInfoFeature()
     
-    @Published var batteryStatusFeature: BatteryStatusFeature = BatteryStatusFeature()
+    @Published var batteryStatusFeature = BatteryStatusFeature()
     
-    @Published var ledAnimationFeature: LedAnimationFeature = LedAnimationFeature()
+    @Published var ledAnimationFeature = FeatureSupported()
     
-    @Published var checkFirmwareUpdateFeature: CheckFirmwareUpdateFeature = CheckFirmwareUpdateFeature()
-    @Published var firmwareUpdateFeature: FirmwareUpdateFeature = FirmwareUpdateFeature()
+    @Published var checkFirmwareUpdateFeature = CheckFirmwareUpdateFeature()
+    @Published var firmwareUpdateFeature = FirmwareUpdateFeature()
     
     @Published var generalMessage: Message? = nil
-    @Published var sdLogConfig: SDLogConfig? = nil
+    @Published var logConfig: LogConfig? = nil
     @Published var hrRecordingData: HrRecordingFeature = HrRecordingFeature()
     @Published var ecgRecordingData: EcgRecordingFeature = EcgRecordingFeature()
     @Published var accRecordingData: AccRecordingFeature = AccRecordingFeature()
@@ -90,7 +91,8 @@ class PolarBleSdkManager : ObservableObject {
     @Published var deviceConnected: Bool = false
     
     @Published var userDeviceSettings: UserDeviceSettingsFeature
-    @Published var multiBleFeature: MultiBleFeature = MultiBleFeature()
+    @Published var multiBleFeature: FeatureSupported = FeatureSupported()
+    @Published var sensorInitiatedSecurityModeSupported: FeatureSupported = FeatureSupported()
     
     @Published var genericApiFileList: [String] = []
     @Published var genericApiFileData: Data = Data()
@@ -117,14 +119,37 @@ class PolarBleSdkManager : ObservableObject {
     @Published var offlineExerciseV2Entries: [PolarExerciseEntry] = []
     @Published var offlineExerciseV2Status: Bool = false
     
-    @Published var fileTransferFeature = FileTransferFeature()
-    @Published var activityDataFeature = ActivityDataFeature()
-    @Published var watchFaceFeature = WatchFaceFeature()
+    @Published var fileTransferFeature = FeatureSupported()
+    @Published var activityDataFeature = FeatureSupported()
+    @Published var watchFaceFeature = FeatureSupported()
+    @Published var telemetryDataStreamingFeature = FeatureSupported()
+    @Published var exerciseData: PolarExerciseData? = nil
+    @Published var h10ExerciseEntry: PolarExerciseEntry?
 
-    private var h10ExerciseEntry: PolarExerciseEntry?
+    @Published var accDerivedSettingsGroup: PolarDerivedMeasurementSettingsGroup? = nil
+    @Published var accDerivedSettings: PolarDerivedMeasurementSettings? = nil
+    @Published var derivedRecordingActive: Bool = false
     
+    /// Container for telemetry data rceived from device via telemetry API.
+    @Published var telemetryData: [Data] = []
+    /// Telemetry stream  connection parameters (device identifier, upload URI, auth token).
+    @Published var telemetryConfiguration: DeviceTelemetryConfiguration? = nil
+    /// `true` while telemetry streaming is active.
+    @Published var isTelemetryStreaming: Bool = false
+    @Published var supportedTelemetryStreamingTypes: DeviceTelemetrySupport?
+    private var telemetryStreamingTask: Task<Void, Never>? = nil
+
     private var searchDevicesTask: Task<Void, Never>? = nil
-    
+
+    /// Shared timestamp set once when a streaming session starts, so all files get the same name suffix.
+    private(set) var streamingSessionTimestamp: String = ""
+
+    func beginStreamingSession() {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyyMMdd_HHmmssSSS"
+        streamingSessionTimestamp = fmt.string(from: Date())
+    }
+
     private let encoder = JSONEncoder()
     private let dateFormatter = DateFormatter()
 
@@ -146,6 +171,7 @@ class PolarBleSdkManager : ObservableObject {
         self.api.powerStateObserver = self
         self.api.deviceInfoObserver = self
         self.api.logger = self
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
     }
 
     /// Standalone initialiser kept for SwiftUI Previews and legacy call sites.
@@ -220,10 +246,6 @@ extension PolarBleSdkManager {
                 NSLog("Not connected to \(device.deviceId), ignoring disconnect")
                 return
             }
-            guard deviceConnectionState.get().deviceId == device.deviceId else {
-                NSLog("Not connected to \(device.deviceId), ignoring disconnect")
-                return
-            }
             NSLog("disconnectFromDevice \(device.deviceId)")
             try api.disconnectFromDevice(device.deviceId)
             // Disconnects are handled in PolarBleApiObserver.deviceDisconnected(_ polarDeviceInfo: PolarDeviceInfo)
@@ -244,24 +266,18 @@ extension PolarBleSdkManager {
             return
         }
         
-        if let index = connectedDevices.firstIndex(where: { $0.deviceId == deviceId }) {
-            connectedDevices.remove(at: index)
-            disconnectedDevicesPairingErrors[deviceId] = pairingError
-        }
-        
-        if pairingError && generalMessage == nil {
+        let wasPresent = connectedDevices.contains(where: { $0.deviceId == deviceId })
+        connectedDevices.removeAll(where: { $0.deviceId == deviceId })
+        disconnectedDevicesPairingErrors[deviceId] = pairingError
+
+        if pairingError && wasPresent && generalMessage == nil {
             Task { @MainActor in
                 self.generalMessage = Message(text: "Pairing error for \(deviceId). Remove previous Bluetooth pairing from phone and from sensor/watch to enable pairing again, restart app, and retry connecting.")
             }
+        } else {
+            self.generalMessage = nil
         }
-        self.generalMessage = nil
-        
-        let wasPresent = connectedDevices.contains(where: { $0.deviceId == deviceId })
-        connectedDevices.removeAll(where: { $0.deviceId == deviceId })  // ← removeAll instead of firstIndex+remove
 
-        if wasPresent {
-            disconnectedDevicesPairingErrors[deviceId] = pairingError
-        }
         updateDisplayedConnectedDevices()
     }
     
@@ -344,24 +360,76 @@ extension PolarBleSdkManager {
             do {
                 let settings = try await api.requestOfflineRecordingSettings(device.deviceId, feature: feature)
                 NSLog("Offline recording settings fetch completed for \(feature)")
+
+                var derivedGroup: PolarDerivedMeasurementSettingsGroup? = nil
+                if feature == .acc {
+                    derivedGroup = await fetchDerivedSettingsGroup(deviceId: device.deviceId, sourceType: .acc)
+                    accDerivedSettingsGroup = derivedGroup
+                    if let g = derivedGroup {
+                        NSLog("[Derived] accDerivedSettingsGroup set for device \(device.deviceId): groupId=\(g.groupId) rates=\(g.sourceSampleRates.sorted()) windows=\(g.timeWindowOptions.sorted()) methods=\(g.supportedMethods.map(\.rawValue).sorted())")
+                    } else {
+                        NSLog("[Derived] No derived settings group found for acc on device \(device.deviceId)")
+                    }
+                }
+
+                let derivedOutputRates: Set<Int> = derivedGroup.map { g in
+                    Set(g.timeWindowOptions.compactMap { ms -> Int? in
+                        guard ms > 0 else { return nil }
+                        let hz = 1000 / ms
+                        return hz > 0 ? hz : nil
+                    })
+                } ?? []
+
                 var receivedSettings: [TypeSetting] = []
                 for setting in settings.settings {
                     var values: [Int] = []
-                    for settingsValue in setting.value { values.append(Int(settingsValue)) }
-                    receivedSettings.append(TypeSetting(type: setting.key, values: values))
+                    for settingsValue in setting.value {
+                        let v = Int(settingsValue)
+                        if feature == .acc && setting.key == .sampleRate && derivedOutputRates.contains(v) {
+                            continue
+                        }
+                        values.append(v)
+                    }
+                    if !values.isEmpty {
+                        receivedSettings.append(TypeSetting(type: setting.key, values: values))
+                    }
                 }
                 offlineRecordingSettings = RecordingSettings(feature: feature, settings: receivedSettings)
             } catch {
                 somethingFailed(text: "Offline recording settings request failed: \(error)")
-                onlineStreamSettings = nil
+                offlineRecordingSettings = nil
             }
         }
     }
-    
+
+    private func fetchDerivedSettingsGroup(
+        deviceId: String,
+        sourceType: PolarDeviceDataType
+    ) async -> PolarDerivedMeasurementSettingsGroup? {
+        do {
+            let groupIds = try await api.requestDerivedMeasurementGroupIds(deviceId, sourceType: sourceType)
+            guard !groupIds.isEmpty else { return nil }
+            let groups: [PolarDerivedMeasurementSettingsGroup] = await withTaskGroup(of: PolarDerivedMeasurementSettingsGroup?.self) { tg in
+                for gid in groupIds {
+                    tg.addTask { try? await self.api.requestDerivedMeasurementSettingsGroup(deviceId, groupId: gid) }
+                }
+                var result: [PolarDerivedMeasurementSettingsGroup] = []
+                for await g in tg { if let g { result.append(g) } }
+                return result
+            }
+            return groups
+                .filter { $0.sourceTypes.contains(sourceType) }
+                .max(by: { $0.supportedMethods.count < $1.supportedMethods.count })
+                ?? groups.max(by: { $0.supportedMethods.count < $1.supportedMethods.count })
+        } catch {
+            NSLog("fetchDerivedSettingsGroup failed for \(sourceType): \(error)")
+            return nil
+        }
+    }
+
     func offlineRecordingSettings(for feature: PolarDeviceDataType) -> RecordingSettings? {
         return offlineRecordingSettingsMap[feature]
     }
-    
     func getOfflineRecordingTriggerSetup() async throws -> PolarOfflineRecordingTrigger {
         guard case .connected(let device) = deviceConnectionState else {
             NSLog("Offline recording trigger setup request failed. Device is not connected \(deviceConnectionState)")
@@ -523,7 +591,9 @@ extension PolarBleSdkManager {
             logString.append(" \($0.type) \($0.values[0])")
         }
         NSLog(logString)
-        onlineRecordingDataTypes.insert(feature, at:0)
+        if !onlineRecordingDataTypes.contains(feature) {
+            onlineRecordingDataTypes.insert(feature, at: 0)
+        }
         do {
             switch feature {
             case .ecg:
@@ -553,19 +623,87 @@ extension PolarBleSdkManager {
         }
     }
     
+    /// Saves settings for a data type to be used later by START SELECTED (no stream started).
+    func saveOnlineStreamSettings(feature: PolarDeviceDataType, settings: RecordingSettings) {
+        savedOnlineStreamSettings[feature] = settings
+        NSLog("Saved online stream settings for \(feature.displayName)")
+    }
+
+    /// Starts online streaming using max/default settings — no settings dialog opened.
+    func onlineStreamStartMaxSettings(feature: PolarDeviceDataType) {
+        if feature == .ppi || feature == .hr {
+            onlineStreamStart(feature: feature)
+            return
+        }
+        // Use previously saved settings if available
+        if let saved = savedOnlineStreamSettings[feature] {
+            NSLog("Using saved settings for \(feature.displayName)")
+            onlineStreamStart(feature: feature, settings: saved)
+            return
+        }
+        guard case .connected(let device) = deviceConnectionState else {
+            somethingFailed(text: "Device is not connected \(deviceConnectionState)")
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let polarSettings = try await api.requestStreamSettings(device.deviceId, feature: feature)
+                let maxPolar = polarSettings.maxSettings()
+                var receivedSettings: [TypeSetting] = []
+                for setting in maxPolar.settings {
+                    var values: [Int] = []
+                    for v in setting.value { values.append(Int(v)) }
+                    receivedSettings.append(TypeSetting(type: setting.key, values: values))
+                }
+                onlineStreamStart(feature: feature, settings: RecordingSettings(feature: feature, settings: receivedSettings))
+            } catch {
+                somethingFailed(text: "Stream settings request failed for \(feature.displayName): \(error)")
+            }
+        }
+    }
+
     func onlineStreamStop(feature: PolarBleSdk.PolarDeviceDataType) {
-        onlineRecordingDataTypes.removeAll { dataType in
-            dataType == feature
+        guard let id = deviceId else {
+            somethingFailed(text: "Device is not connected \(deviceConnectionState)")
+            return
         }
-        onlineStreamingTasks[feature]?.cancel()
-        onlineStreamingTasks.removeValue(forKey: feature)
-        
-        if feature == .hr {
-            HrDataHolder.shared.clear()
+        NSLog("onlineStreamStop: \(feature)")
+
+        let capturedTask = onlineStreamingTasks.removeValue(forKey: feature)
+        onlineRecordingDataTypes.removeAll { $0 == feature }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                if feature == .hr {
+                    try await api.stopHrStreaming(id)
+                } else {
+                    switch feature {
+                    case .ecg:             try await api.stopStreaming(id, type: .ecg)
+                    case .acc:             try await api.stopStreaming(id, type: .acc)
+                    case .ppg:             try await api.stopStreaming(id, type: .ppg)
+                    case .ppi:             try await api.stopStreaming(id, type: .ppi)
+                    case .gyro:            try await api.stopStreaming(id, type: .gyro)
+                    case .magnetometer:    try await api.stopStreaming(id, type: .mgn)
+                    case .temperature:     try await api.stopStreaming(id, type: .temperature)
+                    case .pressure:        try await api.stopStreaming(id, type: .pressure)
+                    case .skinTemperature: try await api.stopStreaming(id, type: .skinTemperature)
+                    case .hr: break
+                    }
+                }
+                NSLog("onlineStreamStop succeeded: \(feature)")
+            } catch {
+                NSLog("onlineStreamStop failed for \(feature.displayName): \(error)")
+                somethingFailed(text: "onlineStreamStop failed for \(feature.displayName): \(error)")
+            }
+            capturedTask?.cancel()
+            self.onlineStreamingFeature.isStreaming[feature] = .success(url: nil)
         }
-        if feature == .acc {
-            AccDataHolder.shared.clear()
-        }
+
+        if feature == .hr { HrDataHolder.shared.clear() }
+        if feature == .acc { AccDataHolder.shared.clear() }
+        if feature == .ecg { EcgDataHolder.shared.clear() }
     }
     
     func listOfflineRecordings() async {
@@ -721,6 +859,16 @@ extension PolarBleSdkManager {
                             await MainActor.run {
                                 self.offlineRecordingData.startTime = startTime
                             }
+                        case .derivedAccOfflineRecordingData(let data, startTime: let startTime, settings: let settings):
+                            NSLog("Derived ACC data received: \(data.samples.count) samples")
+                            let derivedAccString = derivedAccDataHeaderString(data) + derivedAccDataToString(data)
+                            await MainActor.run {
+                                self.offlineRecordingData.startTime = startTime
+                                self.offlineRecordingData.usedSettings = settings
+                                self.offlineRecordingData.data = derivedAccString
+                                self.offlineRecordingData.dataSize = offlineRecordingEntry.size
+                                self.offlineRecordingData.downLoadTime = elapsedTime
+                            }
                         }
                         
                         await MainActor.run {
@@ -738,36 +886,52 @@ extension PolarBleSdkManager {
     }
     
     func offlineRecordingStart(feature: PolarDeviceDataType, settings: RecordingSettings? = nil) {
-        if case .connected(let device) = deviceConnectionState {
-            var logString:String = "Request offline recording \(feature) start with settings: "
-            
-            var polarSensorSettings:[PolarSensorSetting.SettingType : UInt32] = [:]
-            settings?.settings.forEach {
-                polarSensorSettings[$0.type] = UInt32($0.values[0])
-                logString.append(" \($0.type) \($0.values[0])")
-            }
-            NSLog(logString)
-            
-            do {
-                let settings = try PolarSensorSetting(polarSensorSettings)
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    do {
-                        try await api.startOfflineRecording(device.deviceId, feature: feature, settings: settings, secret: nil)
-                        offlineRecordingFeature.isRecording[feature] = true
-                        NSLog("offline recording \(feature) successfully started")
-                    } catch {
-                        NSLog("failed to start offline recording \(feature). Reason: \(error)")
-                    }
-                }
-            } catch {
-                somethingFailed(text: "Settings validation failed for datatype \(feature.displayName).")
-            }
-        } else {
+        guard case .connected(let device) = deviceConnectionState else {
             somethingFailed(text: "Device is not connected \(deviceConnectionState)")
+            return
+        }
+
+        if feature == .acc, let derived = accDerivedSettings {
+            NSLog("[Derived] Starting derived ACC offline recording: group=\(derived.groupId) rate=\(derived.sourceSampleRate)Hz window=\(derived.timeWindowMs)ms methods=\(derived.selectedMethods.map(\.rawValue).sorted())")
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    try await api.startDerivedOfflineRecording(device.deviceId, settings: derived, secret: nil)
+                    derivedRecordingActive = true
+                    offlineRecordingFeature.isRecording[.acc] = true
+                    NSLog("[Derived] Derived ACC offline recording started successfully")
+                } catch {
+                    NSLog("[Derived] Failed to start derived ACC offline recording: \(error)")
+                }
+            }
+            return
+        }
+
+        var logString: String = "Request offline recording \(feature) start with settings:"
+        var polarSensorSettings: [PolarSensorSetting.SettingType: UInt32] = [:]
+        settings?.settings.forEach {
+            polarSensorSettings[$0.type] = UInt32($0.values[0])
+            logString.append(" \($0.type)=\($0.values[0])")
+        }
+        NSLog(logString)
+
+        do {
+            let polarSettings = try PolarSensorSetting(polarSensorSettings)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    try await api.startOfflineRecording(device.deviceId, feature: feature, settings: polarSettings, secret: nil)
+                    offlineRecordingFeature.isRecording[feature] = true
+                    NSLog("offline recording \(feature) successfully started")
+                } catch {
+                    NSLog("failed to start offline recording \(feature). Reason: \(error)")
+                }
+            }
+        } catch {
+            somethingFailed(text: "Settings validation failed for datatype \(feature.displayName).")
         }
     }
-    
+
     func offlineRecordingStop(feature: PolarDeviceDataType) {
         guard case .connected(let device) = deviceConnectionState else {
             somethingFailed(text: "Device is not connected \(deviceConnectionState)")
@@ -777,22 +941,28 @@ extension PolarBleSdkManager {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await api.stopOfflineRecording(device.deviceId, feature: feature)
-                offlineRecordingFeature.isRecording[feature] = false
-                NSLog("offline recording \(feature) successfully stopped")
+                if feature == .acc && derivedRecordingActive {
+                    NSLog("[Derived] Stopping derived ACC offline recording")
+                    try await api.stopDerivedOfflineRecording(device.deviceId)
+                    derivedRecordingActive = false
+                    offlineRecordingFeature.isRecording[feature] = false
+                    NSLog("[Derived] Derived ACC offline recording stopped successfully")
+                } else {
+                    try await api.stopOfflineRecording(device.deviceId, feature: feature)
+                    offlineRecordingFeature.isRecording[feature] = false
+                    NSLog("offline recording \(feature) successfully stopped")
+                }
             } catch {
                 NSLog("failed to stop offline recording \(feature). Reason: \(error)")
                 offlineRecordingFeature.isRecording[feature] = false
+                if feature == .acc { derivedRecordingActive = false }
             }
         }
     }
     
     func isStreamOn(feature: PolarBleSdk.PolarDeviceDataType) -> Bool {
-        if case .inProgress = self.onlineStreamingFeature.isStreaming[feature] {
-            return true
-        } else {
-            return false
-        }
+        guard case .inProgress = self.onlineStreamingFeature.isStreaming[feature] else { return false }
+        return onlineStreamingTasks[feature] != nil
     }
     
     func ecgStreamStart(settings: PolarBleSdk.PolarSensorSetting) {
@@ -823,6 +993,7 @@ extension PolarBleSdkManager {
                             NSLog("ECG    µV: \(item.voltage) timeStamp: \(item.timeStamp)")
                             self.ecgRecordingData.voltage = item.voltage
                             self.ecgRecordingData.timestamp = item.timeStamp
+                            EcgDataHolder.shared.updateEcg(voltage: item.voltage)
                         }
                     }
                 }
@@ -1302,20 +1473,17 @@ extension PolarBleSdkManager {
         offlineExerciseV2Feature.isSupported = isReady
     }
 
-    func listH10Exercises() {
+    func listH10Exercises() async {
         guard case .connected(let device) = deviceConnectionState else { return }
         h10ExerciseEntry = nil
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                for try await entry in api.listExercises(device.deviceId) {
-                    NSLog("entry: \(entry.date.description) path: \(entry.path) id: \(entry.entryId)")
-                    h10ExerciseEntry = entry
-                }
-                NSLog("list exercises completed")
-            } catch {
-                NSLog("failed to list exercises: \(error)")
+        do {
+            for try await entry in api.listExercises(device.deviceId) {
+                NSLog("entry: \(entry.date.description) path: \(entry.path) id: \(entry.entryId)")
+                h10ExerciseEntry = entry
             }
+            NSLog("list exercises completed")
+        } catch {
+            NSLog("failed to list exercises: \(error)")
         }
     }
     
@@ -1331,8 +1499,8 @@ extension PolarBleSdkManager {
                     self.h10RecordingFeature.isFetchingRecording = true
                 }
                 
-                let data:PolarExerciseData = try await api.fetchExercise(device.deviceId, entry: e)
-                NSLog("exercise data count: \(data.samples.count) samples: \(data.samples)")
+                exerciseData = try await api.fetchExercise(device.deviceId, entry: e)
+                NSLog("exercise data count: \(String(describing: exerciseData?.samples.count)) samples: \(String(describing: exerciseData?.samples))")
                 Task { @MainActor in
                     self.h10RecordingFeature.isFetchingRecording = false
                 }
@@ -1358,6 +1526,7 @@ extension PolarBleSdkManager {
                 try await api.removeExercise(device.deviceId, entry: entry)
                 h10ExerciseEntry = nil
                 NSLog("remove completed")
+                self.generalMessage = Message(text: "Exercise removed")
             } catch {
                 NSLog("failed to remove exercise: \(error)")
             }
@@ -1394,10 +1563,12 @@ extension PolarBleSdkManager {
                 if h10RecordingFeature.isEnabled {
                     try await api.stopRecording(device.deviceId)
                     NSLog("recording stopped")
+                    self.generalMessage = Message(text: "Recording stopped")
                     h10RecordingFeature.isEnabled = false
                 } else {
-                    try await api.startRecording(device.deviceId, exerciseId: "TEST_APP_ID", interval: .interval_1s, sampleType: .rr)
+                    try await api.startRecording(device.deviceId, exerciseId: "H10_EX_\(Int64(NSDate().timeIntervalSince1970 * 1000))", interval: .interval_1s, sampleType: .hr)
                     NSLog("recording started")
+                    self.generalMessage = Message(text: "Recording started")
                     h10RecordingFeature.isEnabled = true
                 }
             } catch {
@@ -1572,12 +1743,12 @@ extension PolarBleSdkManager {
         }
     }
 
-    func doFactoryReset() async {
+    func doFactoryReset(preservePairingInformation: Bool = false) async {
         if case .connected(let device) = deviceConnectionState {
             do {
-                let _: Void = try await api.doFactoryReset(device.deviceId)
+                let _: Void = try await api.doFactoryReset(device.deviceId, preservePairingInformation: preservePairingInformation)
                 Task { @MainActor in
-                    self.generalMessage = Message(text: "Send factory reset notification to device: \(device.deviceId)")
+                    self.generalMessage = Message(text: "Send factory reset notification to device: \(device.deviceId). preservePairingInformation=\(preservePairingInformation)")
                 }
             } catch let err {
                 Task { @MainActor in
@@ -1682,6 +1853,25 @@ extension PolarBleSdkManager {
         }
     }
     
+    func setHibernateMode() async {
+        if case .connected(let device) = deviceConnectionState {
+            do {
+                let _: Void = try await api.setHibernateMode(device.deviceId)
+                Task { @MainActor in
+                    self.generalMessage = Message(text: "Set hibernate mode on device: \(device.deviceId).")
+                }
+            } catch let err {
+                Task { @MainActor in
+                    self.somethingFailed(text: "setHibernateMode() error: \(err)")
+                }
+            }
+        } else {
+            Task { @MainActor in
+                self.somethingFailed(text: "setHibernateMode() failed. No device connected.")
+            }
+        }
+    }
+
     func turnDeviceOff() async {
         if case .connected(let device) = deviceConnectionState {
             do {
@@ -1702,21 +1892,21 @@ extension PolarBleSdkManager {
         }
     }
     
-    func setSDLogSettings(logConfig: SDLogConfig) {
-        
+    func setLogConfig(logConfig: LogConfig) {
+
         if case .connected(let device) = deviceConnectionState {
             Task.detached {
                 do {
-                    try await self.api.setSDLogConfiguration(device.deviceId, logConfiguration: logConfig)
+                    try await self.api.setLogConfig(device.deviceId, logConfig: logConfig)
                 }
                 catch let err {
-                    NSLog("Setting Sensor Datalog failed: \(err)")
+                    NSLog("Setting log config failed: \(err)")
                 }
             }
             do {
                 Task.detached {
                     do {
-                        await self.getSDLogSettings()
+                        await self.getLogConfig()
                     }
                 }
             }
@@ -1826,12 +2016,19 @@ extension PolarBleSdkManager {
         }
     }
     
-    func getSDLogSettings() async {
+    func exportDeviceLogs() async throws -> [PolarDeviceLog] {
+        guard case .connected(let device) = deviceConnectionState else {
+            throw PolarErrors.deviceNotConnected
+        }
+        return try await api.exportDeviceLogs(device.deviceId)
+    }
+
+    func getLogConfig() async {
         guard case .connected(let device) = deviceConnectionState else { return }
         do {
-            let config = try await api.getSDLogConfiguration(device.deviceId)
+            let config = try await api.getLogConfig(device.deviceId)
             await MainActor.run {
-                sdLogConfig = SDLogConfig(
+                logConfig = LogConfig(
                     ppiLogEnabled: config.ppiLogEnabled,
                     accelerationLogEnabled: config.accelerationLogEnabled,
                     caloriesLogEnabled: config.caloriesLogEnabled,
@@ -1860,7 +2057,7 @@ extension PolarBleSdkManager {
                 )
             }
         } catch {
-            print("Failed to load sensor datalog settings, \(error)")
+            print("Failed to load logging settings, \(error)")
         }
     }
 
@@ -2478,6 +2675,74 @@ extension PolarBleSdkManager {
         }
     }
     
+    func startTelemetryStreaming(telemetryStreamingType: PolarDeviceTelemetryType) {
+        guard case .connected(let device) = deviceConnectionState else {
+            NSLog("startTelemetryStreaming: no device connected")
+            return
+        }
+        stopTelemetryStreaming(telemetryStreamingType: telemetryStreamingType)
+        telemetryData.removeAll()
+
+        telemetryStreamingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let configuration = try await api.getDeviceTelemetryConfiguration(telemetryType: telemetryStreamingType, device.deviceId)
+                self.telemetryConfiguration = configuration
+                self.showUNUserNotification(
+                    id: "telemetry-configuration",
+                    title: "Telemetry configuration received",
+                    body:  "DeviceId \(configuration?.deviceIdentifier ?? "N/A")\nURI: \(configuration?.dataUri ?? "")\n Supported features: \(String(describing: configuration?.supportedFeatures))\n Authorization: \(configuration?.authorization?.description ?? "")")
+                NSLog("Telemetry configuration: deviceId=\(String(describing: configuration?.deviceIdentifier)) uri=\(String(describing: configuration?.dataUri)) supportedFeatures=\(configuration!.supportedFeatures)")
+            } catch {
+                NSLog("startTelemetryStreaming: getTelemetryConfiguration failed: \(error)")
+                return
+            }
+
+            // Stream telemetry data
+            self.isTelemetryStreaming = true
+            
+            NSLog("startTelemetryStreaming: telemetry streaming started for \(device.deviceId)")
+            do {
+                for try await chunk in try await api.startTelemetry(telemetryType: PolarDeviceTelemetryType.memfault_mds, device.deviceId) {
+                    guard !Task.isCancelled else { break }
+                    self.telemetryData.append(chunk.payload)
+                    let chunkIndex = self.telemetryData.count
+                    NSLog("Telemetry chunk received: \(chunk.payload.count) bytes (total \(chunkIndex) chunks)")
+                    if (chunk.type == .memfault_mds) {
+                        self.showUNUserNotification(
+                            id: "memfault-chunk-\(chunkIndex)",
+                            title: "Telemetry chunk #\(chunkIndex) received",
+                            body: "\(chunk.payload.count) bytes from \(device.deviceId)"
+                        )
+                    } else {
+                        NSLog("Received chunk with unexpected telemetry type: \(chunk.type)")
+                    }
+                }
+            } catch {
+                NSLog("startTelemetryStreaming: starting telemetry streaming failed, error: \(error)")
+            }
+            self.isTelemetryStreaming = false
+            NSLog("startTelemetryStreaming: Telemetry streaming finished for \(device.deviceId)")
+        }
+    }
+
+    func stopTelemetryStreaming(telemetryStreamingType: PolarDeviceTelemetryType) {
+        guard isTelemetryStreaming || telemetryStreamingTask != nil else { return }
+        telemetryStreamingTask?.cancel()
+        telemetryStreamingTask = nil
+        isTelemetryStreaming = false
+        NSLog("stopTelemetryStreaming: cancelled")
+        guard case .connected(let device) = deviceConnectionState else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await api.stopTelemetry(telemetryType: telemetryStreamingType, device.deviceId)
+            } catch {
+                NSLog("stopTelemetryStreaming: stopping telemetry streaming failed, error: \(error)")
+            }
+        }
+    }
+    
     private func somethingFailed(text: String) {
         self.generalMessage = Message(text: "Error: \(text)")
         NSLog("Error \(text)")
@@ -2629,7 +2894,41 @@ extension PolarBleSdkManager {
         }
         return result + "\n"
     }
-    
+
+    private func derivedAccDataHeaderString(_ data: PolarDerivedAccData) -> String {
+        guard let firstSample = data.samples.first else { return "TIMESTAMP\n" }
+        let sortedMethods = firstSample.methodValues.keys.sorted { $0.rawValue < $1.rawValue }
+        var header = "TIMESTAMP"
+        for method in sortedMethods {
+            let values = firstSample.methodValues[method] ?? []
+            if values.count >= 3 {
+                header += " \(method.csvLabel)_X \(method.csvLabel)_Y \(method.csvLabel)_Z"
+            } else {
+                header += " \(method.csvLabel)"
+            }
+        }
+        return header + "\n"
+    }
+
+    private func derivedAccDataToString(_ data: PolarDerivedAccData) -> String {
+        guard let firstSample = data.samples.first else { return "" }
+        let sortedMethods = firstSample.methodValues.keys.sorted { $0.rawValue < $1.rawValue }
+        var result = ""
+        for sample in data.samples {
+            var line = "\(sample.timeStamp)"
+            for method in sortedMethods {
+                let values = sample.methodValues[method] ?? []
+                if values.count >= 3 {
+                    line += " \(values[0]) \(values[1]) \(values[2])"
+                } else if !values.isEmpty {
+                    line += " \(values[0])"
+                }
+            }
+            result += line + "\n"
+        }
+        return result
+    }
+
     private func openOnlineStreamLogFile(type: PolarDeviceDataType) -> (URL, FileHandle)? {
         var firstRow: Data = "".data(using: .utf8)!
         if (type != PolarDeviceDataType.ppg) {
@@ -2641,10 +2940,11 @@ extension PolarBleSdkManager {
             let documentsDirectory = try fileManager.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
 
             let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+            dateFormatter.dateFormat = "yyyyMMdd_HHmmssSSS"
 
-            let currentDate = Date()
-            let dateString = dateFormatter.string(from: currentDate)
+            let dateString = streamingSessionTimestamp.isEmpty
+                ? dateFormatter.string(from: Date())
+                : streamingSessionTimestamp
 
             let fileName = type.stringValue + "_" + dateString + ".txt"
             let fileURL = documentsDirectory.appendingPathComponent(fileName)
@@ -2702,7 +3002,7 @@ extension PolarBleSdkManager {
 
     func setBleMultiConnectionMode(enabled: Bool) async {
 
-        if case .connected(let device) = deviceConnectionState {
+        if case .connected(_) = deviceConnectionState {
             do {
                 try await api.setMultiBLEConnectionMode(identifier: deviceId!, enable: enabled)
                 Task { @MainActor in
@@ -2756,6 +3056,61 @@ extension PolarBleSdkManager {
         }
     }
     
+    func setSensorInitiatedSecurityMode(enabled: Bool) async {
+        if case .connected(_) = deviceConnectionState {
+            do {
+                try await api.setSensorInitiatedSecurityMode(identifier: deviceId!, enable: enabled)
+                Task { @MainActor in
+                    self.sensorInitiatedSecurityModeSupported.isEnabled = enabled
+                }
+            } catch let err {
+                NSLog("Failed to set Sensor Initiated Security Supported mode, \(err)")
+            }
+        }
+    }
+
+    func getSensorInitiatedSecurityModeToggle() {
+        guard case .connected = deviceConnectionState, let devId = deviceId else {
+            NSLog("Device is not connected \(deviceConnectionState)")
+            Task { @MainActor in self.sensorInitiatedSecurityModeSupported.isEnabled = false }
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let enable = !sensorInitiatedSecurityModeSupported.isEnabled
+                try await api.setSensorInitiatedSecurityMode(identifier: devId, enable: enable)
+                sensorInitiatedSecurityModeSupported.isEnabled = enable
+                NSLog("Sensor Initiated Security Supported mode is \(enable ? "enabled" : "disabled")")
+            } catch {
+                somethingFailed(text: "Sensor Initiated Security Supported mode toggle failed: \(error)")
+            }
+        }
+    }
+
+    func getSensorInitiatedSecurityModeStatus() async {
+        if case .connected(let device) = deviceConnectionState {
+            do {
+                NSLog("Get Sensor Initiated Security Supported mode status")
+                let isSensorInitiatedSecurityModeEnabled: Bool = try await api.getSensorInitiatedSecurityMode(identifier: device.deviceId)
+                NSLog("Sensor Initiated Security Supported mode currently enabled: \(isSensorInitiatedSecurityModeEnabled)")
+                Task { @MainActor in
+                    self.sensorInitiatedSecurityModeSupported.isEnabled = isSensorInitiatedSecurityModeEnabled
+                    self.sensorInitiatedSecurityModeSupported.isSupported = true
+                }
+            } catch let err {
+                Task { @MainActor in
+                    let errorMessage = "\(err)"
+                    if errorMessage.contains("gattAttributeError") && errorMessage.contains("errorCode: 3") {
+                        NSLog("Sensor Initiated Security Supported mode not supported by device")
+                        self.sensorInitiatedSecurityModeSupported.isEnabled = false
+                        self.sensorInitiatedSecurityModeSupported.isSupported = false
+                    }
+                }
+            }
+        }
+    }
+
     func startListenForPolarHrBroadcasts(_ deviceIds: Set<String>?) {
         broadcastTask?.cancel()
         broadcastTask = Task { [weak self] in
@@ -2909,6 +3264,12 @@ extension PolarBleSdkManager {
     func deleteFile(filePath: String) async throws {
         if case .connected(let device) = deviceConnectionState {
             try await api.deleteFileOrDirectory(identifier: device.deviceId, filePath: filePath)
+        }
+    }
+
+    func createFolder(folderPath: String) async throws {
+        if case .connected(let device) = deviceConnectionState {
+            try await api.createFolder(identifier: device.deviceId, folderPath: folderPath)
         }
     }
 
@@ -3458,6 +3819,14 @@ extension PolarBleSdkManager : PolarBleApiDeviceFeaturesObserver {
         if ready.contains(.feature_polar_watch_faces_configuration) {
             Task { @MainActor in
                 self.watchFaceFeature.isSupported = true
+            }
+        }
+        
+        if (ready.contains(.feature_telemetry_data_streaming)) {
+            Task { @MainActor in
+                self.telemetryDataStreamingFeature.isSupported = true
+                self.supportedTelemetryStreamingTypes = nil
+                self.supportedTelemetryStreamingTypes = api.getAvailableTelemetryTypes(identifier)
             }
         }
     }

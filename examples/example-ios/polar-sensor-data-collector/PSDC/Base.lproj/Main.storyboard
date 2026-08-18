@@ -29,7 +29,7 @@
                                 <rect key="frame" x="20" y="217" width="335" height="30"/>
                                 <color key="backgroundColor" red="1" green="0.14913141730000001" blue="0.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                 <color key="tintColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
-                                <state key="normal" title="Sensor Datalog Settings"/>
+                                <state key="normal" title="Logging Settings"/>
                                 <connections>
                                     <action selector="sensorSettings:" destination="BYZ-38-t0r" eventType="touchUpInside" id="OZO-cP-AV4"/>
                                 </connections>
@@ -310,7 +310,7 @@
                         <outlet property="ppiSwitch" destination="uCm-kO-zc9" id="Hnl-KL-3zS"/>
                         <outlet property="rrsMs" destination="F70-fj-cCU" id="VOu-J9-aOe"/>
                         <outlet property="sdkVersion" destination="7Bi-wp-cRq" id="BH1-9i-kYr"/>
-                        <outlet property="sensorDatalogButton" destination="Mcf-kM-Mca" id="9OA-3m-SjB"/>
+                        <outlet property="loggingSettingsButton" destination="Mcf-kM-Mca" id="9OA-3m-SjB"/>
                     </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>

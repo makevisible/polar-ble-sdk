@@ -6,9 +6,9 @@ class PmdControlPointResponse(data: ByteArray) {
     }
 
     val responseCode: Byte = data[0]
-    val opCode: PmdControlPointCommandClientToService = PmdControlPointCommandClientToService.values()[data[1].toInt()]
+    val opCode: PmdControlPointCommandClientToService? = PmdControlPointCommandClientToService.fromCode(data[1].toInt() and 0xFF)
     val measurementType: Byte = data[2]
-    val status: PmdControlPointResponseCode = PmdControlPointResponseCode.values()[data[3].toInt()]
+    val status: PmdControlPointResponseCode = PmdControlPointResponseCode.fromId(data[3].toInt() and 0xFF)
     val more: Boolean
     var parameters: ByteArray
 
@@ -27,7 +27,19 @@ class PmdControlPointResponse(data: ByteArray) {
         ERROR_INVALID_NUMBER_OF_CHANNELS(11),
         ERROR_INVALID_STATE(12),
         ERROR_DEVICE_IN_CHARGER(13),
-        ERROR_DISK_FULL(14);
+        ERROR_DISK_FULL(14),
+        ERROR_INVALID_SOURCE_MEASUREMENT_TYPE(15),
+        ERROR_INVALID_SOURCE_MEASUREMENT_RATE(16),
+        ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP(17),
+        ERROR_INVALID_DERIVED_MEASUREMENT_METHOD(18),
+
+        /** Catch-all for any future/unknown error codes returned by the device. */
+        UNKNOWN_ERROR(-1);
+
+        companion object {
+            fun fromId(id: Int): PmdControlPointResponseCode =
+                values().firstOrNull { it.numVal == id } ?: UNKNOWN_ERROR
+        }
     }
 
     init {

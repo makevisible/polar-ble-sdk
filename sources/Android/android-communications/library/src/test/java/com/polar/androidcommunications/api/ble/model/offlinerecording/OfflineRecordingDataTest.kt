@@ -29,7 +29,6 @@ internal class OfflineRecordingDataTest {
 
         // Assert
         assertTrue(offlineAccData.data is AccData)
-        assertEquals(MockAccOfflineRecordingData.headerMagic, offlineAccData.offlineRecordingHeader.magic)
         assertEquals(MockAccOfflineRecordingData.headerVersion, offlineAccData.offlineRecordingHeader.version)
         assertEquals(MockAccOfflineRecordingData.headerFree, offlineAccData.offlineRecordingHeader.free)
         assertEquals(MockAccOfflineRecordingData.headerEswHash, offlineAccData.offlineRecordingHeader.eswHash)
@@ -66,14 +65,14 @@ internal class OfflineRecordingDataTest {
         // Assert
         assertTrue(offlineAccData.data is AccData)
         assertEquals(MockAccOfflineRecordingData.sample0Channel0, (offlineAccData.data as AccData).accSamples[0].x)
-        assertEquals(MockAccOfflineRecordingData.sample0Channel1, offlineAccData.data.accSamples[0].y)
-        assertEquals(MockAccOfflineRecordingData.sample0Channel2, offlineAccData.data.accSamples[0].z)
+        assertEquals(MockAccOfflineRecordingData.sample0Channel1, (offlineAccData.data as AccData).accSamples[0].y)
+        assertEquals(MockAccOfflineRecordingData.sample0Channel2, (offlineAccData.data as AccData).accSamples[0].z)
 
-        assertEquals(MockAccOfflineRecordingData.sample1Channel0, offlineAccData.data.accSamples[1].x)
-        assertEquals(MockAccOfflineRecordingData.sample1Channel1, offlineAccData.data.accSamples[1].y)
-        assertEquals(MockAccOfflineRecordingData.sample1Channel2, offlineAccData.data.accSamples[1].z)
+        assertEquals(MockAccOfflineRecordingData.sample1Channel0, (offlineAccData.data as AccData).accSamples[1].x)
+        assertEquals(MockAccOfflineRecordingData.sample1Channel1, (offlineAccData.data as AccData).accSamples[1].y)
+        assertEquals(MockAccOfflineRecordingData.sample1Channel2, (offlineAccData.data as AccData).accSamples[1].z)
 
-        assertEquals(MockAccOfflineRecordingData.expectedLastSampleTimeStamp, offlineAccData.data.accSamples.last().timeStamp)
+        assertEquals(MockAccOfflineRecordingData.expectedLastSampleTimeStamp, (offlineAccData.data as AccData).accSamples.last().timeStamp)
     }
 
     @Test

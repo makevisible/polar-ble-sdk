@@ -47,8 +47,14 @@ internal class OfflineRecordingData<out T>(
         private const val PACKET_SIZE_LENGTH = 2
 
         @Throws(Exception::class)
-        fun parseDataFromOfflineFile(fileData: ByteArray, type: PmdMeasurementType, secret: PmdSecret? = null, lastTimestamp: ULong = 0uL): OfflineRecordingData<Any> {
-            BleLogger.d(TAG, "Start offline file parsing. File size is ${fileData.size} and type $type, previous file last timestamp: $lastTimestamp")
+        fun parseDataFromOfflineFile(
+            fileData: ByteArray,
+            type: PmdMeasurementType,
+            secret: PmdSecret? = null,
+            lastTimestamp: ULong = 0uL,
+            hintDerivedMethods: Set<Int>? = null
+        ): OfflineRecordingData<Any> {
+            BleLogger.d(TAG, "Start offline file parsing. File size is ${fileData.size} and type $type, previous file last timestamp: $lastTimestamp, hintDerivedMethods: $hintDerivedMethods")
 
             // guard
             if (fileData.isEmpty()) {
@@ -63,10 +69,21 @@ internal class OfflineRecordingData<out T>(
 
             val payloadDataBytes = fileData.drop(metaDataLength)
 
+            // Log all settings found in the file header so we know exactly what the firmware wrote
+            val settingsLog = metaData.recordingSettings?.settings?.entries
+                ?.joinToString(", ") { (k, v) -> "${k.name}=${v.map { it }}" } ?: "null"
+            BleLogger.d(TAG, "Parsed metaData: startTime=${metaData.startTime} payloadBytes=${payloadDataBytes.size} settings=[$settingsLog]")
+
             val parsedData = parseData(
                 dataBytes = payloadDataBytes,
                 metaData = metaData,
-                builder = getDataBuilder(type),
+                builder = when (type) {
+                    PmdMeasurementType.ACC ->
+                        buildAccDataBuilder(metaData.recordingSettings, hintDerivedMethods)
+                    PmdMeasurementType.DERIVED_MEASUREMENT ->
+                        buildDerivedDataBuilder(metaData.recordingSettings, hintDerivedMethods)
+                    else -> getDataBuilder(type)
+                },
                 lastTimestamp = lastTimestamp
             )
 
@@ -79,23 +96,82 @@ internal class OfflineRecordingData<out T>(
         }
 
         private fun getDataBuilder(type: PmdMeasurementType): Any {
-            val builder: Any = when (type) {
-                PmdMeasurementType.ECG -> EcgData()
-                PmdMeasurementType.PPG -> PpgData()
-                PmdMeasurementType.ACC -> AccData()
-                PmdMeasurementType.PPI -> PpiData()
-                PmdMeasurementType.GYRO -> GyrData()
-                PmdMeasurementType.MAGNETOMETER -> MagData()
-                PmdMeasurementType.SKIN_TEMP -> SkinTemperatureData()
-                PmdMeasurementType.LOCATION -> GnssLocationData()
-                PmdMeasurementType.PRESSURE -> PressureData()
-                PmdMeasurementType.TEMPERATURE -> TemperatureData()
-                PmdMeasurementType.OFFLINE_HR -> OfflineHrData()
-                else -> {
-                    throw OfflineRecordingError.OfflineRecordingErrorNoParserForData
-                }
+            return when (type) {
+                PmdMeasurementType.ECG               -> EcgData()
+                PmdMeasurementType.PPG               -> PpgData()
+                PmdMeasurementType.PPI               -> PpiData()
+                PmdMeasurementType.GYRO              -> GyrData()
+                PmdMeasurementType.MAGNETOMETER      -> MagData()
+                PmdMeasurementType.SKIN_TEMP         -> SkinTemperatureData()
+                PmdMeasurementType.LOCATION          -> GnssLocationData()
+                PmdMeasurementType.PRESSURE          -> PressureData()
+                PmdMeasurementType.TEMPERATURE       -> TemperatureData()
+                PmdMeasurementType.OFFLINE_HR        -> OfflineHrData()
+                else -> throw OfflineRecordingError.OfflineRecordingErrorNoParserForData
             }
-            return builder
+        }
+
+        /**
+         * Handles the ACC measurement type.
+         *
+         * Returns [DerivedAccData] if derived method IDs are present in the settings, [AccData] otherwise.
+         */
+        private fun buildAccDataBuilder(settings: PmdSetting?, hintDerivedMethods: Set<Int>?): Any {
+            val methodIds = resolveDerivedMethodIds(
+                settings = settings,
+                hint = hintDerivedMethods,
+                fallbackToAllIfNoSettings = true
+            )
+            return if (methodIds.isNotEmpty()) DerivedAccData(methodIds) else AccData()
+        }
+
+        /**
+         * Handles the spec-compliant DERIVED_MEASUREMENT frame type.
+         *
+         * Method IDs are read from the file header settings or the caller hint; if neither is
+         * present the result is an empty-method [DerivedAccData] and frame parsing will produce
+         * no samples.
+         */
+        private fun buildDerivedDataBuilder(settings: PmdSetting?, hintDerivedMethods: Set<Int>?): DerivedAccData {
+            val methodIds = resolveDerivedMethodIds(
+                settings = settings,
+                hint = hintDerivedMethods,
+                fallbackToAllIfNoSettings = false
+            )
+            return DerivedAccData(methodIds)
+        }
+
+        /**
+         * Resolves the set of active derived-measurement method IDs by consulting, in order:
+         * 1. `DERIVED_MEASUREMENT_METHOD` from the file header settings.
+         * 2. The caller-supplied [hint].
+         * 3. If [fallbackToAllIfNoSettings] is true and [settings] is null, fall back to all
+         *    possible method IDs (0–9) — the auto-trim in [DerivedAccData] will then narrow
+         *    the set to only those that actually fit the frame content.
+         * 4. Empty set (no methods — caller should treat this as a raw recording).
+         */
+        private fun resolveDerivedMethodIds(
+            settings: PmdSetting?,
+            hint: Set<Int>?,
+            fallbackToAllIfNoSettings: Boolean
+        ): Set<Int> {
+            val methodIds = settings?.settings?.get(PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_METHOD)
+                ?.takeIf { it.isNotEmpty() }
+                ?: hint
+                ?: if (fallbackToAllIfNoSettings && settings == null) {
+                    val fallback = (0..9).toSet()
+                    BleLogger.d(TAG, "resolveDerivedMethodIds: settings absent and no hint; " +
+                        "assuming derived recording, using fallback $fallback " +
+                        "(auto-trim in DerivedAccData will detect the actual active subset)")
+                    fallback
+                } else {
+                    emptySet()
+                }
+            if (hint != null && methodIds == hint) {
+                BleLogger.w(TAG, "resolveDerivedMethodIds: DERIVED_MEASUREMENT_METHOD absent " +
+                    "from file header; using caller hint: $methodIds")
+            }
+            return methodIds
         }
 
         private fun parseSecurityStrategy(strategyBytes: List<Byte>): PmdSecret.SecurityStrategy {
@@ -270,6 +346,9 @@ internal class OfflineRecordingData<out T>(
             var previousTimeStamp: ULong = lastTimestamp
             var packetSize = metaData.dataPayloadSize
             val sampleRate = metaData.recordingSettings?.settings?.get(PmdSetting.PmdSettingType.SAMPLE_RATE)?.first() ?: 0
+
+            val effectiveSampleRate: Int = sampleRate
+
             val factor = metaData.recordingSettings?.settings?.get(PmdSetting.PmdSettingType.FACTOR)?.first()?.let {
                 val ieee754 = it
                 java.lang.Float.intBitsToFloat(ieee754)
@@ -281,15 +360,23 @@ internal class OfflineRecordingData<out T>(
             }
             var offset = 0
             val decryptedData = metaData.securityInfo.decryptArray(dataBytes.toByteArray())
-            do {
+
+            // Frame-type counters for end-of-file summary
+            var frameIndex = 0
+
+            do
+            {
                 val data = decryptedData.slice(offset until packetSize + offset)
                 offset += packetSize
+
+                frameIndex++
                 val dataFrame = PmdDataFrame(data.toByteArray(),
                     getPreviousTimeStamp = { pmdMeasurementType: PmdMeasurementType, pmdDataFrameType: PmdDataFrame.PmdDataFrameType -> previousTimeStamp },
                     getFactor = { factor }
-                ) { sampleRate }
+                ) { effectiveSampleRate }
 
                 previousTimeStamp = dataFrame.timeStamp
+
 
                 try {
                     when (builder) {
@@ -298,9 +385,15 @@ internal class OfflineRecordingData<out T>(
                             builder.ecgSamples.addAll(ecgData.ecgSamples)
                         }
 
+
                         is AccData -> {
                             val accData = AccData.parseDataFromDataFrame(dataFrame)
                             builder.accSamples.addAll(accData.accSamples)
+                        }
+
+                        is DerivedAccData -> {
+                            val derivedData = DerivedAccData.parseDataFromDataFrame(dataFrame, builder.activeMethods)
+                            builder.derivedSamples.addAll(derivedData.derivedSamples)
                         }
 
                         is GyrData -> {
@@ -360,6 +453,9 @@ internal class OfflineRecordingData<out T>(
                     offset += 2
                 }
             } while (offset < decryptedData.size)
+
+            // End-of-file summary: how many frames of each measurement type were present
+            BleLogger.d(TAG, "parseData DONE: totalFrames=$frameIndex builder=${builder?.javaClass?.simpleName}")
             return builder
         }
     }

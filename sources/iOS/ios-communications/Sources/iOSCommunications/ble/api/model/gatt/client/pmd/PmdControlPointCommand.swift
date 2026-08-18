@@ -12,6 +12,7 @@ struct PmdControlPointCommandClientToService {
     static let GET_OFFLINE_RECORDING_TRIGGER_STATUS: UInt8 = 0x07
     static let SET_OFFLINE_RECORDING_TRIGGER_MODE: UInt8 = 0x08
     static let SET_OFFLINE_RECORDING_TRIGGER_SETTINGS: UInt8 = 0x09
+    static let GET_DERIVED_MEASUREMENT_SETTINGS_GROUP: UInt8 = 0x0A
 }
 
 struct PmdControlPointCommandServiceToClient {

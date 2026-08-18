@@ -17,7 +17,7 @@
     <a title="Enumerations  Reference"></a>
     <header>
       <div class="content-wrapper">
-        <p><a href="index.html">PolarBleSdk 7.1.3 Docs</a> (40% documented)</p>
+        <p><a href="index.html">PolarBleSdk 8.1.3 Docs</a> (42% documented)</p>
         <div class="header-right">
           <form role="search" action="search.json">
             <input type="text" placeholder="Search documentation" data-typeahead>
@@ -151,6 +151,9 @@
                 <a href="Enums/Communications_PbPFtpError.html">Communications_PbPFtpError</a>
               </li>
               <li class="nav-group-task">
+                <a href="Enums/DeviceTelemetryConfiguration.html">DeviceTelemetryConfiguration</a>
+              </li>
+              <li class="nav-group-task">
                 <a href="Enums/FirmwareUpdateStatus.html">FirmwareUpdateStatus</a>
               </li>
               <li class="nav-group-task">
@@ -166,7 +169,13 @@
                 <a href="Enums/PolarDailyBalanceFeedBack.html">PolarDailyBalanceFeedBack</a>
               </li>
               <li class="nav-group-task">
+                <a href="Enums/PolarDerivedMeasurementMethod.html">PolarDerivedMeasurementMethod</a>
+              </li>
+              <li class="nav-group-task">
                 <a href="Enums/PolarDeviceDataType.html">PolarDeviceDataType</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Enums/PolarDeviceTelemetryType.html">PolarDeviceTelemetryType</a>
               </li>
               <li class="nav-group-task">
                 <a href="Enums/PolarDeviceToHostNotification.html">PolarDeviceToHostNotification</a>
@@ -260,6 +269,12 @@
                 <a href="Protocols/PolarBleLowLevelApi.html">PolarBleLowLevelApi</a>
               </li>
               <li class="nav-group-task">
+                <a href="Protocols/PolarDerivedMeasurementApi.html">PolarDerivedMeasurementApi</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Protocols/PolarDeviceTelemetryApi.html">PolarDeviceTelemetryApi</a>
+              </li>
+              <li class="nav-group-task">
                 <a href="Protocols/PolarDeviceToHostNotificationsApi.html">PolarDeviceToHostNotificationsApi</a>
               </li>
               <li class="nav-group-task">
@@ -267,6 +282,9 @@
               </li>
               <li class="nav-group-task">
                 <a href="Protocols/PolarH10OfflineExerciseApi.html">PolarH10OfflineExerciseApi</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Protocols/PolarLoggingApi.html">PolarLoggingApi</a>
               </li>
               <li class="nav-group-task">
                 <a href="Protocols/PolarOfflineExerciseV2Api.html">PolarOfflineExerciseV2Api</a>
@@ -307,7 +325,16 @@
                 <a href="Structs/AutomaticSamples.html">AutomaticSamples</a>
               </li>
               <li class="nav-group-task">
+                <a href="Structs/DeviceTelemetryEvent.html">DeviceTelemetryEvent</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/DeviceTelemetrySupport.html">DeviceTelemetrySupport</a>
+              </li>
+              <li class="nav-group-task">
                 <a href="Structs/LedConfig.html">LedConfig</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/LogConfig.html">LogConfig</a>
               </li>
               <li class="nav-group-task">
                 <a href="Structs/OfflineExerciseStartResult.html">OfflineExerciseStartResult</a>
@@ -362,6 +389,21 @@
               </li>
               <li class="nav-group-task">
                 <a href="Structs/PolarDailySummary.html">PolarDailySummary</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/PolarDerivedAccData.html">PolarDerivedAccData</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/PolarDerivedMeasurementSettings.html">PolarDerivedMeasurementSettings</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/PolarDerivedMeasurementSettingsGroup.html">PolarDerivedMeasurementSettingsGroup</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/PolarDerivedSample.html">PolarDerivedSample</a>
+              </li>
+              <li class="nav-group-task">
+                <a href="Structs/PolarDeviceLog.html">PolarDeviceLog</a>
               </li>
               <li class="nav-group-task">
                 <a href="Structs/PolarDeviceRestApiServiceDescription.html">PolarDeviceRestApiServiceDescription</a>
@@ -455,9 +497,6 @@
               </li>
               <li class="nav-group-task">
                 <a href="Structs/PolarWatchFaceConfig.html">PolarWatchFaceConfig</a>
-              </li>
-              <li class="nav-group-task">
-                <a href="Structs/SDLogConfig.html">SDLogConfig</a>
               </li>
               <li class="nav-group-task">
                 <a href="Structs/UserIdentifierType.html">UserIdentifierType</a>
@@ -666,6 +705,64 @@
                 <li class="item">
                   <div>
                     <code>
+                    <a name="/s:11PolarBleSdk0A19DeviceTelemetryTypeO"></a>
+                    <a name="//apple_ref/swift/Enum/PolarDeviceTelemetryType" class="dashAnchor"></a>
+                    <a class="token" href="#/s:11PolarBleSdk0A19DeviceTelemetryTypeO">PolarDeviceTelemetryType</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Telemetry types available in the Polar SDK.</p>
+
+                        <a href="Enums/PolarDeviceTelemetryType.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">PolarDeviceTelemetryType</span> <span class="p">:</span> <span class="kt">CaseIterable</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:11PolarBleSdk28DeviceTelemetryConfigurationO"></a>
+                    <a name="//apple_ref/swift/Enum/DeviceTelemetryConfiguration" class="dashAnchor"></a>
+                    <a class="token" href="#/s:11PolarBleSdk28DeviceTelemetryConfigurationO">DeviceTelemetryConfiguration</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>NOTE: this is experimental code intended for Polar internal use only. Polar will not support 3rd party users with this API.
+Telemetry configuration that can hold different configuration types for different telemetry services.
+Use pattern matching to extract the appropriate configuration for the telemetry type.</p>
+
+                        <a href="Enums/DeviceTelemetryConfiguration.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">DeviceTelemetryConfiguration</span> <span class="p">:</span> <span class="kt">Equatable</span><span class="p">,</span> <span class="kt">Sendable</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
                     <a name="/s:11PolarBleSdk17RecordingIntervalO"></a>
                     <a name="//apple_ref/swift/Enum/RecordingInterval" class="dashAnchor"></a>
                     <a class="token" href="#/s:11PolarBleSdk17RecordingIntervalO">RecordingInterval</a>
@@ -770,6 +867,40 @@ an offline exercise session on a supported Polar device.</p>
                         <div class="language">
                           <p class="aside-title">Swift</p>
                           <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">PolarErrors</span> <span class="p">:</span> <span class="kt">Error</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:11PolarBleSdk0A24DerivedMeasurementMethodO"></a>
+                    <a name="//apple_ref/swift/Enum/PolarDerivedMeasurementMethod" class="dashAnchor"></a>
+                    <a class="token" href="#/s:11PolarBleSdk0A24DerivedMeasurementMethodO">PolarDerivedMeasurementMethod</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Derived measurement methods supported by the device (methods 0–9).</p>
+
+<p>Any non-empty subset of the methods supported by a group may be requested simultaneously.
+Each active method appends its output values to the derived sample in ascending id order.</p>
+
+<p>Methods 0–4 are applied component-wise (e.g. X, Y, Z for ACC).
+Methods 5–9 reduce the D-dimensional source vector to a single unsigned scalar.</p>
+
+                        <a href="Enums/PolarDerivedMeasurementMethod.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">PolarDerivedMeasurementMethod</span> <span class="p">:</span> <span class="kt">Int</span><span class="p">,</span> <span class="kt">CaseIterable</span><span class="p">,</span> <span class="kt">Sendable</span></code></pre>
 
                         </div>
                       </div>
@@ -1175,7 +1306,7 @@ an offline exercise session on a supported Polar device.</p>
           </section>
         </section>
         <section id="footer">
-          <p>&copy; 2026 <a class="link" href="https://github.com/polarofficial/polar-ble-sdk" target="_blank" rel="external noopener">Polar Electro Oy</a>. All rights reserved. (Last updated: 2026-05-26)</p>
+          <p>&copy; 2026 <a class="link" href="https://github.com/polarofficial/polar-ble-sdk" target="_blank" rel="external noopener">Polar Electro Oy</a>. All rights reserved. (Last updated: 2026-08-18)</p>
           <p>Generated by <a class="link" href="https://github.com/realm/jazzy" target="_blank" rel="external noopener">jazzy ♪♫ v0.15.3</a>, a <a class="link" href="https://realm.io" target="_blank" rel="external noopener">Realm</a> project.</p>
         </section>
       </article>

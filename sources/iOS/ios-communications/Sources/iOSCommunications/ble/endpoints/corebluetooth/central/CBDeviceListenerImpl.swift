@@ -313,9 +313,8 @@ public class CBDeviceListenerImpl: NSObject, SDKCBCentralManagerDelegate {
     }
 
     fileprivate func handleDisconnected(_ session: CBDeviceSessionImpl, error: Error?) {
-        
         let canTryReconnect = !(error?.indicatesBLEPairingProblem ?? false)
-        
+
         if automaticReconnection && canTryReconnect {
             switch (session.state) {
             case .sessionOpen where session.connectionType == .directConnection && self.blePowered():
@@ -421,15 +420,19 @@ extension CBDeviceListenerImpl: BleDeviceListener {
                         self.centralManager(self.manager, didDiscover: device, advertisementData: advData, rssi: -20)
                     }
                 }
+
+                // Collect known sessions BEFORE returning the publisher.
+                let knownSessions: [BleDeviceSession]
                 if fetchKnownDevices {
-                    self.sessions.items.forEach { (sess) in
-                        BleLogger.trace("search returning session \(sess.peripheral)")
-                        self.scanner.scanSubject.send(sess)
-                    }
+                    let raw = self.sessions.list()
+                    knownSessions = raw.map { $0 as BleDeviceSession }
+                } else {
+                    knownSessions = []
                 }
-                
+
                 return self.scanner.scanSubject
                     .setFailureType(to: Error.self)
+                    .prepend(knownSessions)
                     .handleEvents(receiveCancel: {
                         self.scanner.removeClient()
                     })
@@ -448,6 +451,10 @@ extension CBDeviceListenerImpl: BleDeviceListener {
                 manager.connect((session as! CBDeviceSessionImpl).peripheral, options: nil)
             case .sessionClosing:
                 updateSessionState(session as! CBDeviceSessionImpl, state: .sessionOpenPark)
+            case .sessionOpenPark:
+                // Previously-connected session waiting to reconnect.
+                updateSessionState(session as! CBDeviceSessionImpl, state: .sessionOpening)
+                manager.connect((session as! CBDeviceSessionImpl).peripheral, options: nil)
             default:
                 break
             }
@@ -474,8 +481,12 @@ extension CBDeviceListenerImpl: BleDeviceListener {
             completeSessionClose(session)
         case .sessionOpenPark where session.previousState == .sessionClosing:
             updateSessionState(session as! CBDeviceSessionImpl, state: .sessionClosing)
+            manager.cancelPeripheralConnection((session as! CBDeviceSessionImpl).peripheral)
         case .sessionOpenPark:
+            // Cancel any pending CoreBluetooth connect() so iOS stops showing the
+            // device as connected and the system does not reconnect it automatically.
             updateSessionState(session as! CBDeviceSessionImpl, state: .sessionClosed)
+            manager.cancelPeripheralConnection((session as! CBDeviceSessionImpl).peripheral)
         default: break
         }
     }

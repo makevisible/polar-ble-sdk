@@ -88,6 +88,9 @@ public enum PolarBleSdkFeature: CaseIterable {
 
     /// Feature to configure watch face complications on PolarOS watches.
     case feature_polar_watch_faces_configuration
+    
+    /// Feature to receive telemetry data from Polar devices.
+    case feature_telemetry_data_streaming
 }
 
 ///
@@ -231,8 +234,8 @@ public typealias PolarPpiData = (timeStamp: UInt64, samples: [(timeStamp: UInt64
 public typealias PolarRecordingStatus = (ongoing: Bool, entryId: String)
 
 /// API.
-public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, PolarH10OfflineExerciseApi, PolarSdkModeApi, PolarFirmwareUpdateApi, PolarActivityApi, PolarTemperatureApi, PolarSleepApi, PolarTrainingSessionApi, PolarDeviceToHostNotificationsApi, PolarBleLowLevelApi, PolarRestServiceApi, PolarOfflineExerciseV2Api, PolarTestApi, PolarWatchFaceApi {
-    
+public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, PolarH10OfflineExerciseApi, PolarSdkModeApi, PolarFirmwareUpdateApi, PolarActivityApi, PolarTemperatureApi, PolarSleepApi, PolarTrainingSessionApi, PolarDeviceToHostNotificationsApi, PolarBleLowLevelApi, PolarRestServiceApi, PolarOfflineExerciseV2Api, PolarTestApi, PolarWatchFaceApi, PolarDerivedMeasurementApi, PolarLoggingApi, PolarDeviceTelemetryApi {
+
     /// remove all known devices, which are not in use
     ///
     /// - Requires SDK feature(s): None (core API).
@@ -431,25 +434,6 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     ///
     func doRestart(_ identifier: String) async throws
 
-    /// Get SD log configuration from a device (SDLOGS.BPB)
-    ///
-    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_device_control`
-    /// - Parameters:
-    ///   - identifier: polar device id or UUID
-    /// - Returns: `SDLogConfig` describing the current SD log configuration on the device.
-    /// - Throws: See `PolarErrors` for possible errors invoked.
-    ///
-    func getSDLogConfiguration(_ identifier: String) async throws -> SDLogConfig
-    
-    /// Set SD log configuration to a device (SDLOGS.BPB)
-    ///
-    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_device_control`
-    /// - Parameters:
-    ///   - identifier: polar device id or UUID
-    ///   - logConfiguration: A motley crew of boolean values describing the SD log configuration
-    /// - Throws: See `PolarErrors` for possible errors invoked.
-    ///
-    func setSDLogConfiguration(_ identifier: String, logConfiguration: SDLogConfig) async throws
 
     ///Set [FtuConfig] for device
     ///
@@ -499,6 +483,17 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     ///
     func setWarehouseSleep(_ identifier: String) async throws
     
+    /// Set hibernate mode on a given device. Hibernate puts the device into a low-power state that
+    /// retains device time, unlike warehouse sleep (storage mode). Battery should last for tens, or
+    /// even hundreds of days in hibernate.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_device_control`
+    /// - Parameters:
+    ///   - identifier: polar device id or UUID
+    /// - Throws: See `PolarErrors` for possible errors invoked.
+    ///
+    func setHibernateMode(_ identifier: String) async throws
+
     /// Turn of device by setting the device to sleep state.
     ///
     /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_device_control`
@@ -634,6 +629,26 @@ public protocol PolarBleApi: PolarOfflineRecordingApi, PolarOnlineStreamingApi, 
     /// - Throws: See `PolarErrors` for possible errors invoked.
     ///
     func setMultiBLEConnectionMode(identifier: String, enable: Bool) async throws
+    
+    /// Request Sensor Initiated Security Mode status from device.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_features_configuration_service`
+    /// - Parameters:
+    ///   - identifier: Polar device id or UUID
+    /// - Returns: `true` if Sensor Initiated Security Mode is enabled, `false` otherwise.
+    /// - Throws: See `PolarErrors` for possible errors invoked.
+    ///
+    func getSensorInitiatedSecurityMode(identifier: String) async throws -> Bool
+    
+    /// Enable Sensor Initiated Security Mode on a given device.
+    ///
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_features_configuration_service`
+    /// - Parameters:
+    ///   - identifier: Polar device id or UUID
+    ///   - enable: Boolean flag to enable or disable Sensor Initiated Security Mode
+    /// - Throws: See `PolarErrors` for possible errors invoked.
+    ///
+    func setSensorInitiatedSecurityMode(identifier: String, enable: Bool) async throws
     
     /// Notify device of the incoming data transfer operation(s). By using this method the device will handle data transfer operations more efficiently by setting it to faster data transfer mode.
     /// It also will cause the device to flush the latest data to files giving you the most up-to-date data.

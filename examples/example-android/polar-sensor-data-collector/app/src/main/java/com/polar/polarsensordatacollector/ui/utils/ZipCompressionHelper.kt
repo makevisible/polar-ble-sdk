@@ -7,6 +7,9 @@ import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.io.FileOutputStream
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -172,5 +175,51 @@ object ZipCompressionHelper {
         } catch (e: Exception) {
             Log.w(TAG, "Error during cleanup: ${e.message}", e)
         }
+    }
+
+    /**
+     * Converts a device log file path (e.g. "/ERRORLOG.BPB") to a safe ZIP entry name
+     * by stripping the leading slash and replacing any remaining slashes with underscores.
+     *
+     * @param path the raw path as returned by the device
+     * @return a safe file name suitable for use as a ZIP entry
+     */
+    fun deviceLogEntryName(path: String): String =
+        path.trimStart('/').replace('/', '_')
+
+    /**
+     * Creates a ZIP [File] in the app's cache directory from a list of raw log entries.
+     *
+     * The resulting filename follows the pattern:
+     * `device_logs-<deviceId>-<yyyyMMdd-HHmmss>.zip`
+     *
+     * Each entry is a [Pair] of (device path, raw byte data).  The device path is
+     * normalised via [deviceLogEntryName] before being used as the ZIP entry name.
+     *
+     * @param context  Android context (used for [Context.getCacheDir])
+     * @param logs     list of (path, data) pairs representing individual log files
+     * @param deviceId the Polar device ID included in the filename (default: empty string)
+     * @return the created [File]; its length is 0 when [logs] is empty
+     */
+    fun createDeviceLogsZipFile(
+        context: Context,
+        logs: List<Pair<String, ByteArray>>,
+        deviceId: String = ""
+    ): File {
+        val utcNow = ZonedDateTime.now(ZoneOffset.UTC)
+        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(utcNow)
+        val idPart = if (deviceId.isNotBlank()) deviceId else "unknown"
+        val zipFile = File(context.cacheDir, "device_logs-${idPart}-${timestamp}.zip")
+        ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+            for ((path, data) in logs) {
+                val entryName = deviceLogEntryName(path)
+                Log.d(TAG, "Adding device log to ZIP: $entryName (${data.size} bytes)")
+                zos.putNextEntry(ZipEntry(entryName))
+                zos.write(data)
+                zos.closeEntry()
+            }
+        }
+        Log.d(TAG, "Device logs ZIP created: ${zipFile.name} (${zipFile.length()} bytes)")
+        return zipFile
     }
 }

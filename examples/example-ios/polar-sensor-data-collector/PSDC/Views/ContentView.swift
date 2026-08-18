@@ -68,6 +68,8 @@ struct ContentView: View {
                         if bleDeviceManager.connectedDevices().count > 1 {
                             Button("Disconnect all", action: {
                                 bleDeviceManager.disconnectAll()
+                                // Reset AppState to a fresh manager after disconnecting all devices
+                                appState.switchTo(bleDeviceManager.makeSdkManager())
                             }).buttonStyle(PrimaryButtonStyle(buttonState: getConnectButtonState()))
                         }
                     }
@@ -100,7 +102,7 @@ struct ContentView: View {
                         self.isSearchingDevices = !(self.isSearchingDevices)
                     }
 
-                if case .noDevice = bleSdkManager.deviceConnectionState {
+                if !bleSdkManager.deviceConnectionState.isConnected {
                     Button("Listen HR Broadcasts", action: {
                         self.showHrBroadcastView = true
                     })
@@ -110,16 +112,11 @@ struct ContentView: View {
                         HrBroadcastView()
                             .environmentObject(bleSdkManager)
                     }
-                } else if case .disconnected = bleSdkManager.deviceConnectionState {
-                    Button("Listen HR Broadcasts", action: {
-                        self.showHrBroadcastView = true
+                    Button("Auto Connect", action: {
+                        bleSdkManager.autoConnect()
                     })
                     .buttonStyle(PrimaryButtonStyle(buttonState: getSearchButtonState()))
                     .disabled(!bleSdkManager.isBluetoothOn)
-                    .sheet(isPresented: $showHrBroadcastView) {
-                        HrBroadcastView()
-                            .environmentObject(bleSdkManager)
-                    }
                 }
                 
                 Text("\(bleSdkManager.connectedDevicesText)")
@@ -158,8 +155,8 @@ struct ContentView: View {
         }, message: {
             Text(appState.bleSdkManager.generalMessage?.text ?? "?")
         })
-        .onChange(of: appState.bleSdkManager.generalMessage?.text) { text in
-           presenting = text != nil
+        .onChange(of: appState.bleSdkManager.generalMessage?.id) { id in
+           presenting = id != nil
         }
     }
     
@@ -205,9 +202,9 @@ struct ContentView: View {
             
             appHeader = NSLocalizedString("APP_NAME", comment: "") + "\n" + getBuildInfo()
             
-            let appLocalModifications = 
+            let appLocalModifications =
                 Bundle.main.object(forInfoDictionaryKey: "GIT_APP_LOCALLY_MODIFIED") as? String ?? ""
-            let sdkLocalModifications = 
+            let sdkLocalModifications =
                 Bundle.main.object(forInfoDictionaryKey: "GIT_SDK_LOCALLY_MODIFIED") as? String ?? ""
             localModifications = ""
             
@@ -298,7 +295,7 @@ struct OperationModesTabView: View {
                 DeviceSettingsView()
                     .environmentObject(bleSdkManager)
             case .logging:
-                SensorDatalogSettingsView()
+                LoggingSettingsView()
                     .environmentObject(bleSdkManager)
             case .activityRecordingView:
                 ActivityRecordingView()

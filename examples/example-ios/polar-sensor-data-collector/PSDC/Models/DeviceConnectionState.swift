@@ -13,11 +13,14 @@ enum DeviceConnectionState {
 //    case disconnecting(PolarDeviceInfo)
     
     func get() -> PolarDeviceInfo {
-        
         switch self {
-        case .noDevice(let deviceInfo), .connected(let deviceInfo), .disconnected(let deviceInfo), .connecting(let deviceInfo)/*, .disconnecting(let deviceInfo)*/:
+        case .noDevice(let deviceInfo), .connected(let deviceInfo), .disconnected(let deviceInfo), .connecting(let deviceInfo):
             return deviceInfo
         }
-        
+    }
+
+    var isConnected: Bool {
+        if case .connected = self { return true }
+        return false
     }
 }

@@ -40,6 +40,10 @@ public enum PmdResponseCode: Int {
     case errorInvalidState = 12
     case errorDeviceInCharger = 13
     case errorDiskFull = 14
+    case errorInvalidSourceMeasurementType = 15
+    case errorInvalidSourceMeasurementRate = 16
+    case errorInvalidDerivedMeasurementSettingsGroup = 17
+    case errorInvalidDerivedMeasurementMethod = 18
     case unknown_error = 0xffff
     
     var description : String {
@@ -59,6 +63,10 @@ public enum PmdResponseCode: Int {
         case .errorInvalidState: return "Invalid state"
         case .errorDeviceInCharger: return "Device in charger"
         case .errorDiskFull: return "Disk full"
+        case .errorInvalidSourceMeasurementType: return "Invalid source measurement type"
+        case .errorInvalidSourceMeasurementRate: return "Invalid source measurement rate"
+        case .errorInvalidDerivedMeasurementSettingsGroup: return "Invalid derived measurement settings group"
+        case .errorInvalidDerivedMeasurementMethod: return "Invalid derived measurement method"
         case .unknown_error: return "unknown error"
         }
     }

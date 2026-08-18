@@ -168,6 +168,38 @@ internal object PolarFileUtils {
         }
     }
 
+    /**
+     * Fetch a single file from the device and return its raw bytes.
+     * Requires the device to use [FileSystemType.POLAR_FILE_SYSTEM_V2]; throws
+     * [PolarOperationNotSupported] for other file system types.
+     *
+     * @param identifier Polar device ID or BT address
+     * @param path absolute file path on the device (e.g. "/ERRORLOG.BPB")
+     * @param listener active [BleDeviceListener]
+     * @param tag log tag used for debug output
+     * @return raw file contents as [ByteArray]
+     */
+    suspend fun getFile(
+        identifier: String,
+        path: String,
+        listener: BleDeviceListener?,
+        tag: String
+    ): ByteArray {
+        val session = sessionPsFtpClientReady(identifier, listener)
+        val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
+            ?: throw PolarServiceNotAvailable()
+        return when (getFileSystemType(session.polarDeviceType)) {
+            FileSystemType.POLAR_FILE_SYSTEM_V2 -> {
+                val builder = PftpRequest.PbPFtpOperation.newBuilder()
+                builder.command = PftpRequest.PbPFtpOperation.Command.GET
+                builder.path = path
+                BleLogger.d(tag, "getFile: fetching $path")
+                client.request(builder.build().toByteArray()).toByteArray()
+            }
+            else -> throw PolarOperationNotSupported()
+        }
+    }
+
     private fun handleError(throwable: Throwable): Exception {
         // Pass through SDK-level exceptions directly — do not wrap them
         if (throwable is Exception &&
@@ -272,6 +304,42 @@ internal object PolarFileUtils {
                 results
             }
             else -> throw PolarOperationNotSupported()
+        }
+    }
+
+    // Low level API method
+    suspend fun createFolder(
+        identifier: String,
+        folderPath: String,
+        listener: BleDeviceListener?,
+        tag: String
+    ) {
+        // Ensure the path ends with '/' so the device interprets it as a directory
+        val normalizedPath = if (folderPath.endsWith("/")) folderPath else "$folderPath/"
+
+        val session = try {
+            sessionPsFtpClientReady(identifier, listener)
+        } catch (error: Throwable) {
+            throw handleError(error)
+        }
+        val client = session.fetchClient(BlePsFtpUtils.RFC77_PFTP_SERVICE) as BlePsFtpClient?
+            ?: throw PolarServiceNotAvailable()
+
+        val builder = PftpRequest.PbPFtpOperation.newBuilder()
+        builder.command = PftpRequest.PbPFtpOperation.Command.PUT
+        builder.path = normalizedPath
+
+        // An empty payload signals folder creation to the device
+        val emptyData = ByteArrayInputStream(ByteArray(0))
+        try {
+            client.write(builder.build().toByteArray(), emptyData)
+                .collect { progress ->
+                    BleLogger.d(tag, "createFolder write progress $progress: $normalizedPath")
+                }
+            BleLogger.d(tag, "createFolder: folder created at $normalizedPath on device $identifier")
+        } catch (error: Throwable) {
+            BleLogger.e(tag, "createFolder: failed to create $normalizedPath on device $identifier, error: $error")
+            throw handleError(error)
         }
     }
 

@@ -89,9 +89,7 @@ class OfflineRecFragment : Fragment(R.layout.fragment_offline_rec) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 offlineViewModel.uiShowError.collect {
-                    if (it.header.isNotEmpty()) {
                         showSnackBar(rootView = requireView(), it.header, it.description ?: "", showAsError = true)
-                    }
                 }
             }
         }
@@ -99,9 +97,7 @@ class OfflineRecFragment : Fragment(R.layout.fragment_offline_rec) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 offlineViewModel.uiShowInfo.collect {
-                    if (it.header.isNotEmpty()) {
-                        showSnackBar(rootView = requireView(), it.header, it.description ?: "")
-                    }
+                        showSnackBar(rootView = requireView(), it.header, it.description ?: "", timeout = it.timeout)
                 }
             }
         }
@@ -141,20 +137,30 @@ class OfflineRecFragment : Fragment(R.layout.fragment_offline_rec) {
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val settings: Map<SettingType, Int> = showAllSettingsDialog(
-                    requireActivity(),
-                    availableStreamSettingsUiState.settings.currentlyAvailable.settings,
-                    availableStreamSettingsUiState.settings.allPossibleSettings.settings,
-                    availableStreamSettingsUiState.settings.selectedSettings
+                val (settings, derivedResult, hadDerivedSection) = showAllSettingsDialog(
+                    requireActivity() as android.app.Activity,
+                    availableStreamSettingsUiState.settings.currentlyAvailable.settings.toMap(),
+                    availableStreamSettingsUiState.settings.allPossibleSettings.settings.toMap(),
+                    availableStreamSettingsUiState.settings.selectedSettings,
+                    derivedSettingsGroup = availableStreamSettingsUiState.settings.derivedSettingsGroup,
+                    previousDerivedSettings = availableStreamSettingsUiState.settings.selectedDerivedSettings?.let {
+                        com.polar.polarsensordatacollector.ui.utils.DerivedDialogResult(
+                            selectedMethods = it.selectedMethods,
+                            selectedSourceRate = it.sourceSampleRate,
+                            selectedTimeWindowMs = it.timeWindowMs
+                        )
+                    }
                 )
                     .subscribeOn(AndroidSchedulers.mainThread())
                     .await()
 
-                Log.d(TAG, "Dialog completed with settings $settings")
+                Log.d(TAG, "Dialog completed with settings $settings derivedResult=$derivedResult hadDerivedSection=$hadDerivedSection")
 
                 offlineViewModel.updateSelectedStreamSettings(
                     availableStreamSettingsUiState.feature,
-                    settings
+                    settings,
+                    derivedResult,
+                    hadDerivedSection
                 )
             } catch (e: Throwable) {
                 val settingsSelectionFailed =
@@ -169,7 +175,7 @@ class OfflineRecFragment : Fragment(R.layout.fragment_offline_rec) {
 
     private fun askStreamSettingsFromUser(identifier: String, feature: PolarDeviceDataType) {
         getOfflineRecSettingsButtonView(feature)?.isEnabled = false
-        offlineViewModel.requestOfflineRecSettings(deviceId = identifier, feature = feature)
+        offlineViewModel.requestOfflineRecSettings(identifier = identifier, feature = feature)
     }
 
     private fun setupViews(view: View) {

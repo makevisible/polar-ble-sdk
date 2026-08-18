@@ -58,6 +58,50 @@ class BlePmdClientControlPointResponseTest {
     }
 
     @Test
+    fun `derived measurement start fails with ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP`() {
+        // Verifies that the response F0 02 0F 11 00 (status=0x11=17) is parsed without
+        // ArrayIndexOutOfBoundsException and maps to ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP.
+        // Regression test for error codes not present in the original enum.
+        val cpResponse = byteArrayOf(
+            0xF0.toByte(), // response code
+            0x02.toByte(), // op code: REQUEST_MEASUREMENT_START
+            0x0F.toByte(), // measurement type: DERIVED_MEASUREMENT (15)
+            0x11.toByte(), // status: 0x11 = 17 = ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP
+            0x00.toByte()  // more: false
+        )
+
+        val response = PmdControlPointResponse(cpResponse)
+
+        assertEquals(
+            PmdControlPointResponse.PmdControlPointResponseCode.ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP,
+            response.status
+        )
+        assertEquals(PmdControlPointCommandClientToService.REQUEST_MEASUREMENT_START, response.opCode)
+        assertEquals(false, response.more)
+        assertEquals(0, response.parameters.size)
+    }
+
+    @Test
+    fun `unknown future error code does not crash and maps to UNKNOWN_ERROR`() {
+        // Verifies that a status byte beyond all known codes returns UNKNOWN_ERROR
+        // instead of throwing ArrayIndexOutOfBoundsException.
+        val cpResponse = byteArrayOf(
+            0xF0.toByte(),
+            0x02.toByte(),
+            0x0F.toByte(),
+            0x7F.toByte(), // some future unknown error code
+            0x00.toByte()
+        )
+
+        val response = PmdControlPointResponse(cpResponse)
+
+        assertEquals(
+            PmdControlPointResponse.PmdControlPointResponseCode.UNKNOWN_ERROR,
+            response.status
+        )
+    }
+
+    @Test
     fun `failing control point response for mag stream settings`() {
         //Arrange
         // HEX: F0 01 06 00 00

@@ -318,7 +318,15 @@ open class BlePsFtpClient: BleGattClientBase, @unchecked Sendable {
     }
 
     func request(_ header: Data, progressCallback: BlePsFtpProgressCallback?) async throws -> NSData {
-        var shouldClearProgressCallback = self.progressCallback != nil
+        var shouldClearProgressCallback = false
+        if let callback = progressCallback {
+            if self.progressCallback == nil {
+                self.progressCallback = callback
+                shouldClearProgressCallback = true
+            }
+        } else if self.progressCallback != nil {
+            shouldClearProgressCallback = false
+        }
         let block = BlockOperation()
         var resumeOnce: ContinuationOnce<NSData>?
         // Visible fork: withTaskCancellationHandler so consumer cancellation cancels the

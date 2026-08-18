@@ -200,6 +200,14 @@ class OnlineOfflineAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) 
         }
     }
 
+    private fun removeH10ExerciseFragment() {
+        val index = items.indexOfFirst { it.second is H10ExerciseFragment }
+        if (index > -1) {
+            items.removeAt(index)
+            this.notifyItemRemoved(index)
+        }
+    }
+
     fun removeFragments(isAlreadyConnected: Boolean = false) {
         Log.d(TAG, "removeFragments(), isAlreadyConnected: $isAlreadyConnected")
         removeOfflineRecordingFragment()
@@ -210,5 +218,6 @@ class OnlineOfflineAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) 
         removeLoggingFragment()
         removeActivityFragment()
         removeExerciseV2Fragment()
+        removeH10ExerciseFragment()
     }
 }

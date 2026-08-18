@@ -69,4 +69,37 @@ public protocol PolarBleLowLevelApi {
         directoryPath: String,
         recurseDeep: Bool
     ) async throws -> [String]
+
+    ///
+    /// Visible fork: list files (recursively) returning (name, sizeBytes) pairs.
+    /// `getFileList` above drops sizes; the Files Viewer diagnostics tooling needs them.
+    /// NOTE: this is an experimental API intended for Polar internal use only. Polar will not support 3rd party users with this API.
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
+    /// - Parameters:
+    ///  -  identifier Polar device ID or BT address
+    ///  -  directoryPath Path to the desired directory in a Polar device from which to list all files.
+    ///  -  recurseDeep Recursion goes to the bottom of the file tree when true.
+    /// - Returns: List of (name, sizeBytes) pairs found in the given directory.
+    /// - Throws: See `PolarErrors` for possible errors.
+    ///
+    func getFileListWithSizes(
+        identifier: String,
+        directoryPath: String,
+        recurseDeep: Bool
+    ) async throws -> [(name: String, size: UInt64)]
+
+    ///
+    /// Create a new folder on the device using the low-level PFTP API.
+    /// The folder path must end with a '/'. If it does not, one will be appended automatically.
+    /// NOTE: this is an experimental API intended for Polar internal use only. Polar will not support 3rd party users with this API.
+    /// - Requires SDK feature(s): `PolarBleSdkFeature.feature_polar_file_transfer`
+    /// - Parameters:
+    ///  -  identifier Polar device ID or BT address
+    ///  -  folderPath Path of the folder to create on the Polar device (e.g. "/U/0/20240101/ACT/").
+    /// - Throws: See `PolarErrors` for possible errors.
+    ///
+    func createFolder(
+        identifier: String,
+        folderPath: String
+    ) async throws
 }

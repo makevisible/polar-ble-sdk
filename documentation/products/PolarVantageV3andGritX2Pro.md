@@ -28,6 +28,7 @@ Data export
 * 24/7 PPi samples
 * Skin temperature data
 * Calory data (activity/training/BMR)
+* SPO2 test results
 
 Device management
 * Get/set time

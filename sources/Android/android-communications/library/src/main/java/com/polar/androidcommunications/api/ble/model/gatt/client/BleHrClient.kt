@@ -100,8 +100,9 @@ class BleHrClient(txInterface: BleGattTxInterface) : BleGattBase(txInterface, HR
                     while (offset < len) {
                         val rrValue = (data[offset].toInt() and 0xFF) + (data[offset + 1].toInt() and 0xFF shl 8)
                         offset += 2
+                        val rrMs = mapRr1024ToRrMs(rrValue)
                         rrs.add(rrValue)
-                        rrsMs.add(mapRr1024ToRrMs(rrValue))
+                        rrsMs.add(rrMs)
                     }
                 }
                 val finalEnergy = energy

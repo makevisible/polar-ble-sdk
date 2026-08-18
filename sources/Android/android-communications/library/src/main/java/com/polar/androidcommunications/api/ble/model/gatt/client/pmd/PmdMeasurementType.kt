@@ -14,12 +14,14 @@ enum class PmdMeasurementType(val numVal: UByte) {
     TEMPERATURE(12u),
     OFFLINE_RECORDING(13u),
     OFFLINE_HR(14u),
+    DERIVED_MEASUREMENT(15u),
     UNKNOWN_TYPE(0x3fu);
 
     fun isDataType(): Boolean {
         return when (this) {
             SDK_MODE,
             OFFLINE_RECORDING,
+            DERIVED_MEASUREMENT,
             UNKNOWN_TYPE -> false
             else -> true
         }

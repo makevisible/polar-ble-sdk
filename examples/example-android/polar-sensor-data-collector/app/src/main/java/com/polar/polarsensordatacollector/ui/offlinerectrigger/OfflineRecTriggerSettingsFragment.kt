@@ -89,14 +89,12 @@ class OfflineRecTriggerSettingsFragment : Fragment(R.layout.fragment_offline_tri
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 offlineTriggerViewModel.uiShowError.collect {
-                    if (it.header.isNotEmpty()) {
                         showSnackBar(
                             rootView = requireView(),
                             header = it.header,
                             description = it.description ?: "",
                             showAsError = true
                         )
-                    }
                 }
             }
         }
@@ -104,13 +102,7 @@ class OfflineRecTriggerSettingsFragment : Fragment(R.layout.fragment_offline_tri
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 offlineTriggerViewModel.uiShowInfo.collect {
-                    if (it.header.isNotEmpty()) {
-                        showSnackBar(
-                            rootView = requireView(),
-                            header = it.header,
-                            description = it.description ?: ""
-                        )
-                    }
+                        showSnackBar(rootView = requireView(), header = it.header, description = it.description ?: "", timeout = it.timeout)
                 }
             }
         }
@@ -178,17 +170,17 @@ class OfflineRecTriggerSettingsFragment : Fragment(R.layout.fragment_offline_tri
     private fun userSelectsOfflineSettings(settingsUiState: OfflineRecTriggerSettingsUiState?) {
         if (settingsUiState != null && settingsUiState.settings.currentlyAvailable != null) {
             DialogUtility.showAllSettingsDialog(
-                requireActivity(),
-                settingsUiState.settings.currentlyAvailable.settings,
-                settingsUiState.settings.currentlyAvailable.settings,
+                requireActivity() as android.app.Activity,
+                settingsUiState.settings.currentlyAvailable.settings.toMap(),
+                settingsUiState.settings.currentlyAvailable.settings.toMap(),
                 settingsUiState.settings.selectedSettings
             ).toFlowable()
                 .doFinally {
                     getRecTriggerSettingsButtonView(settingsUiState.feature)?.isEnabled = true
                 }
-                .subscribe({ settings: Map<PolarSensorSetting.SettingType, Int>? ->
+                .subscribe({ (settings, _) ->
                     Log.d(TAG, "Dialog completed with settings $settings")
-                    settings?.let {
+                    settings.let {
                         offlineTriggerViewModel.updateSelectedStreamSettings(settingsUiState.feature, it)
                     }
                 }, { error: Throwable ->

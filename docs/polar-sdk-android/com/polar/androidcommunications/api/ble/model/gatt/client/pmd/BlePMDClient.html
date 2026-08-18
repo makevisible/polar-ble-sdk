@@ -398,6 +398,14 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                         </tr>
                                         
                                         <tr id="i9" class="rowColor">
+                                            <td class="colFirst"><code>final <a href=PmdSetting.html>PmdSetting</a></code>
+                                            </td>
+                                            <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#queryDerivedMeasurementSettingsGroup(java.lang.Integer)>queryDerivedMeasurementSettingsGroup</a>(<a href=https://developer.android.com/reference/kotlin/java/lang/Integer.html>Integer</a> groupId) </code>
+                                            </th>
+                                            <td class="colLast">Query the available settings for one Derived Measurement Settings Group.</td>
+                                        </tr>
+                                        
+                                        <tr id="i10" class="altColor">
                                             <td class="colFirst"><code>final <a href=https://developer.android.com/reference/kotlin/java/util/Set.html>Set</a>&lt;<a href=PmdMeasurementType.html>PmdMeasurementType</a>&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#readFeature(java.lang.Boolean)>readFeature</a>(<a href=https://developer.android.com/reference/kotlin/java/lang/Boolean.html>Boolean</a> checkConnection) </code>
@@ -405,7 +413,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Read available PMD measurement types from device feature data.</td>
                                         </tr>
                                         
-                                        <tr id="i10" class="altColor">
+                                        <tr id="i11" class="rowColor">
                                             <td class="colFirst"><code>final &lt;Error class: unknown class&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#startMeasurement(com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdMeasurementType,com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdSetting,com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdRecordingType,com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdSecret)>startMeasurement</a>(<a href=PmdMeasurementType.html>PmdMeasurementType</a> type, <a href=PmdSetting.html>PmdSetting</a> setting, <a href=PmdRecordingType.html>PmdRecordingType</a> recordingType, <a href=PmdSecret.html>PmdSecret</a> secret) </code>
@@ -413,7 +421,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Start measurement of the given type.</td>
                                         </tr>
                                         
-                                        <tr id="i11" class="rowColor">
+                                        <tr id="i12" class="altColor">
                                             <td class="colFirst"><code>final <a href=https://developer.android.com/reference/kotlin/java/util/Map.html>Map</a>&lt;<a href=PmdMeasurementType.html>PmdMeasurementType</a>, <a href=PmdActiveMeasurement.html>PmdActiveMeasurement</a>&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#readMeasurementStatus()>readMeasurementStatus</a>() </code>
@@ -421,7 +429,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Read current measurement status from device.</td>
                                         </tr>
                                         
-                                        <tr id="i12" class="altColor">
+                                        <tr id="i13" class="rowColor">
                                             <td class="colFirst"><code>final &lt;Error class: unknown class&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#waitForMeasurementInactive(com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdMeasurementType,java.lang.Long,java.lang.Long)>waitForMeasurementInactive</a>(<a href=PmdMeasurementType.html>PmdMeasurementType</a> type, <a href=https://developer.android.com/reference/kotlin/java/lang/Long.html>Long</a> pollIntervalMs, <a href=https://developer.android.com/reference/kotlin/java/lang/Long.html>Long</a> timeoutMs) </code>
@@ -429,7 +437,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Poll measurement status until the given type is inactive or timeout is reached.</td>
                                         </tr>
                                         
-                                        <tr id="i13" class="rowColor">
+                                        <tr id="i14" class="altColor">
                                             <td class="colFirst"><code>final &lt;Error class: unknown class&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#startSDKMode()>startSDKMode</a>() </code>
@@ -437,7 +445,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Request to start SDK mode.</td>
                                         </tr>
                                         
-                                        <tr id="i14" class="altColor">
+                                        <tr id="i15" class="rowColor">
                                             <td class="colFirst"><code>final &lt;Error class: unknown class&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#stopSDKMode()>stopSDKMode</a>() </code>
@@ -445,7 +453,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Request to stop SDK mode.</td>
                                         </tr>
                                         
-                                        <tr id="i15" class="rowColor">
+                                        <tr id="i16" class="altColor">
                                             <td class="colFirst"><code>final &lt;Error class: unknown class&gt;</code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#stopMeasurement(com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdMeasurementType)>stopMeasurement</a>(<a href=PmdMeasurementType.html>PmdMeasurementType</a> type) </code>
@@ -453,7 +461,7 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                             <td class="colLast">Request to stop measurement.</td>
                                         </tr>
                                         
-                                        <tr id="i16" class="altColor">
+                                        <tr id="i17" class="rowColor">
                                             <td class="colFirst"><code><a href=https://kotlinlang.org/api/latest/jvm/stdlib/kotlin-stdlib/kotlin/-unit/index.html>Unit</a></code>
                                             </td>
                                             <th class="colSecond" scope="row"><code><a href=BlePMDClient.html#clientReady(java.lang.Boolean)>clientReady</a>(<a href=https://developer.android.com/reference/kotlin/java/lang/Boolean.html>Boolean</a> checkConnection) </code>
@@ -745,6 +753,39 @@ extends <a href=../../BleGattBase.html>BleGattBase</a>
                                         
                                             <dt><span class="returnLabel">Returns:</span></dt>
                                             <dd><p><a href=PmdSetting.html>PmdSetting</a> on success, throws on error</p></dd>
+                                        
+
+                                        
+
+                                        </dl>
+                                    </li>
+                                </ul>
+                                
+                                <a id="queryDerivedMeasurementSettingsGroup(java.lang.Integer)">
+                                    <!--   -->
+                                </a>
+                                <ul class=
+                                              "blockList"
+                                          >
+                                    <li class="blockList">
+                                        <h4>queryDerivedMeasurementSettingsGroup</h4>
+                                        <pre class="methodSignature"> final <a href=PmdSetting.html>PmdSetting</a> <a href=BlePMDClient.html#queryDerivedMeasurementSettingsGroup(java.lang.Integer)>queryDerivedMeasurementSettingsGroup</a>(<a href=https://developer.android.com/reference/kotlin/java/lang/Integer.html>Integer</a> groupId)</pre>
+                                        <div class="block"><p>Query the available settings for one Derived Measurement Settings Group.</p></div>
+
+                                        <dl>
+
+                                        
+                                            <dt><span class="paramLabel">Parameters:</span></dt>
+                                            
+                                            
+                                            <dd><code>groupId</code> - the Derived Measurement Settings Group ID to query</dd>
+                                            
+                                            
+                                        
+
+                                        
+                                            <dt><span class="returnLabel">Returns:</span></dt>
+                                            <dd><p><a href=PmdSetting.html>PmdSetting</a> with the available derived measurement settings on success, throws on error</p></dd>
                                         
 
                                         

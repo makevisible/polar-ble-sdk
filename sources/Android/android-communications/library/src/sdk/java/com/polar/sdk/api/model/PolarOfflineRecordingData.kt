@@ -215,7 +215,59 @@ sealed class PolarOfflineRecordingData(val startTime: LocalDateTime, val setting
             )
         }
     }
+
+    /**
+     * Derived ACC offline recording data
+     *
+     * @property data derived ACC data
+     * @property startTime the time recording was started in UTC time
+     * @property settings the settings used while recording
+     */
+    class DerivedAccOfflineRecording(
+        val data: PolarDerivedAccData,
+        startTime: LocalDateTime,
+        settings: PolarSensorSetting?
+    ) : PolarOfflineRecordingData(startTime, settings) {
+        internal fun appendDerivedAccData(
+            existingRecording: DerivedAccOfflineRecording,
+            newData: PolarDerivedAccData,
+            settings: PolarSensorSetting?
+        ): DerivedAccOfflineRecording {
+            val mergedSamples = mutableListOf<PolarDerivedSample>()
+            mergedSamples.addAll(existingRecording.data.samples)
+            mergedSamples.addAll(newData.samples)
+            return DerivedAccOfflineRecording(
+                PolarDerivedAccData(
+                    mergedSamples
+                ),
+                startTime,
+                settings
+            )
+        }
+    }
 }
+
+/**
+ * One derived-measurement sample produced per time window (e.g. 1 sample/s with 1000 ms window).
+ *
+ * [methodValues] maps each active [PolarDerivedMeasurementMethod] to its output values:
+ * - Component methods (e.g. DOWNSAMPLE, MIN, MAX, AVG, STD for a 3-axis source) → `[x, y, z]`
+ * - Scalar methods (NORM, MIN_OF_NORMS, MAX_OF_NORMS, STD_OF_NORMS, NORM_OF_STDS) → `[v]`
+ *
+ * All raw integer values must be multiplied by the recording's conversion factor to obtain
+ * physical values (same factor as the source recording).
+ *
+ * @property timeStamp sample timestamp in nanoseconds, corresponds to end of the time window
+ * @property activeMethods the set of methods active for this recording
+ * @property methodValues output values per active method; absent key means method was not active
+ */
+data class PolarDerivedSample(
+    val timeStamp: Long,
+    val activeMethods: Set<PolarDerivedMeasurementMethod>,
+    val methodValues: Map<PolarDerivedMeasurementMethod, List<Int>>
+)
+
+data class PolarDerivedAccData(val samples: List<PolarDerivedSample>)
 
 /**
  * Result wrapper for offline recording fetch operations with progress.

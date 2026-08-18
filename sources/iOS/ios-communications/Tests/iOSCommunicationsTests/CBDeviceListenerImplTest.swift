@@ -187,6 +187,13 @@ final class CBDeviceListenerImplTest: XCTestCase {
         sut.servicesToScanFor = nil
         XCTAssertNil(sut.servicesToScanFor)
     }
+
+    func testOpenSessionDirect_sessionOpenPark_blePoweredOff_stateUnchanged() {
+        XCTAssertFalse(sut.blePowered(), "Pre-condition: BLE must not be powered in unit tests")
+        XCTAssertTrue(sut.allSessions().isEmpty,
+                      "No sessions should exist at test start — openSessionDirect with a real " +
+                      "CBDeviceSessionImpl in .sessionOpenPark requires BLE hardware")
+    }
 }
 
 // MARK: - Test helpers

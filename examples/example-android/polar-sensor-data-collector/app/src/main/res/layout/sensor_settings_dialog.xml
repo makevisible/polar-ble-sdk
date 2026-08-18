@@ -95,6 +95,79 @@
             android:layout_gravity="center_vertical"
             android:orientation="vertical" />
 
+        <!-- Derived Measurement Section — shown only when device supports it -->
+        <View
+            android:id="@+id/derived_section_divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?attr/colorOnSurface"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/derived_section_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/derived_section_header"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone" />
+
+        <!-- Master on/off toggle for derived measurement. Shown alongside the section label. -->
+        <CheckBox
+            android:id="@+id/derived_enable_checkbox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/derived_enable_checkbox_label"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/derived_source_rate_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/derived_source_rate_label"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <RadioGroup
+            android:id="@+id/derived_source_rate_group"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/derived_time_window_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/derived_time_window_label"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <RadioGroup
+            android:id="@+id/derived_time_window_group"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/derived_methods_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/derived_methods_label"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/derived_methods_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/dialog_ok_button"
             android:layout_width="match_parent"

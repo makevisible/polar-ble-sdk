@@ -17,6 +17,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
+import android.view.LayoutInflater
+import android.view.ViewGroup
 import com.polar.androidcommunications.api.ble.model.gatt.client.BatteryPresentState
 import com.polar.androidcommunications.api.ble.model.gatt.client.ChargeState
 import com.polar.androidcommunications.api.ble.model.gatt.client.PowerSourceState
@@ -32,7 +34,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class MainFragment : Fragment(R.layout.fragment_main) {
+class MainFragment : Fragment() {
     companion object {
         private const val TAG = "MainFragment"
         private const val CURRENT_FRAGMENT = "current_fragment"
@@ -66,7 +68,28 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private var selectedDeviceSupportsV2OfflineExercise: Boolean = false
 
+    // Persists across view destruction/recreation (e.g. navigating to sub-screens and returning)
+    // so the user lands back on the same tab they left. Not using onSaveInstanceState because that
+    // is only populated for system-initiated saves (rotation, process death) – for normal Navigation
+    // Component back-navigation savedInstanceState is null in onViewCreated.
+    private var currentViewPagerPage: Int = 0
+    private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
+
+    // Created once in onCreate so it survives view recreation (e.g. navigating to About/Settings
+    // and back). Recreating it in onViewCreated / setupViews would destroy all pager fragments
+    // and lose their state (including active streams).
     private lateinit var onlineOfflineAdapter: OnlineOfflineAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        onlineOfflineAdapter = OnlineOfflineAdapter(this)
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View = inflater.inflate(R.layout.fragment_main, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         setupViews(view)
@@ -116,12 +139,38 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiOfflineRecordingV2State.collect { v2State ->
-                    Log.d(TAG, "uiOfflineRecordingV2State collected: deviceId=${v2State.deviceId}, isAvailable=${v2State.isAvailable}")
-                    if (v2State.deviceId.isNotEmpty() && v2State.isAvailable) {
+                    Log.d(TAG, "uiOfflineRecordingV2State collected: identifier=${v2State.identifier}, isAvailable=${v2State.isAvailable}")
+                    if (v2State.identifier.isNotEmpty() && v2State.isAvailable) {
                         selectedDeviceSupportsV2OfflineExercise = true
                         if (!onlineOfflineAdapter.hasExerciseV2Fragment()) {
-                            onlineOfflineAdapter.addExerciseV2Fragment(v2State.deviceId, true)
+                            onlineOfflineAdapter.addExerciseV2Fragment(v2State.identifier, true)
                         }
+                    }
+                }
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.removeOnlineOfflineFragments.collect {
+                    batteryStatus.text = ""
+                    batteryChargingStatus.text = ""
+                    hidePowerSourceState()
+                    firmwareVersion.text = ""
+                    sensorState.text = ""
+                    connectButton.isEnabled = false
+                    tabLayout.visibility = GONE
+                    viewPager.visibility = INVISIBLE
+                    deviceConnectionStatusGroup.visibility = VISIBLE
+                    phoneBleStatus.visibility = GONE
+                    listenHrBroadcastsButton.visibility = GONE
+                    connectButton.setBackgroundColor(resources.getColor(R.color.colorButtonConnecting, null))
+                    onlineOfflineAdapter.removeFragments()
+                    selectedDevice?.let {
+                        connectedDevices.remove(it)
+                    }
+                    if (connectedDevices.isEmpty()) {
+                        disconnectButton.visibility = GONE
                     }
                 }
             }
@@ -265,9 +314,23 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private fun setupViews(view: View) {
         tabLayout = view.findViewById(R.id.tab_layout)
-        onlineOfflineAdapter = OnlineOfflineAdapter(this)
         viewPager = view.findViewById(R.id.pager)
+        viewPager.isSaveEnabled = false
         viewPager.adapter = onlineOfflineAdapter
+
+        // Restore previously selected tab. Must happen before TabLayoutMediator.attach() so the
+        // tab indicator is positioned correctly from the start.
+        viewPager.setCurrentItem(currentViewPagerPage, false)
+
+        // Keep currentViewPagerPage in sync so future restorations (and CONNECTED state handler)
+        // always use the latest page, even if the user switches tabs while the device is connected.
+        pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                currentViewPagerPage = position
+                selectedDevice?.let { viewPagerPagePerDevice[it.deviceId] = position }
+            }
+        }
+        viewPager.registerOnPageChangeCallback(pageChangeCallback!!)
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
             tab.text = onlineOfflineAdapter.items[position].first
@@ -286,6 +349,18 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         batteryPresentStatus = view.findViewById(R.id.battery_present_status)
         wiredPowerSourceConnectedStatus = view.findViewById(R.id.wired_power_source_connected_status)
         wirelessPowerSourceConnectedStatus = view.findViewById(R.id.wireless_power_source_connected_status)
+    }
+
+    override fun onDestroyView() {
+        // Save the current tab so we can restore it when the view is recreated after returning
+        // from a sub-screen (Navigation Component back-navigation does not populate savedInstanceState).
+        pageChangeCallback?.let { viewPager.unregisterOnPageChangeCallback(it) }
+        pageChangeCallback = null
+        if (this::viewPager.isInitialized) {
+            currentViewPagerPage = viewPager.currentItem
+        }
+        viewPager.adapter = null
+        super.onDestroyView()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -331,7 +406,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
             MainViewModel.DeviceConnectionStates.CONNECTED -> {
                 connectButton.setText(R.string.search_and_connect_connections)
-                val deviceId = selectedDevice?.deviceId ?: state.deviceId
+                val deviceId = selectedDevice?.deviceId ?: state.identifier
                 sensorState.text = getString(R.string.device_id, deviceId)
                 connectButton.isEnabled = true
                 onlineOfflineAdapter.addOnlineRecordingFragment(deviceId)
@@ -351,9 +426,12 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                 val cachedEvent = viewModel.uiSdkFeaturesReadyState.value
                 sdkFeaturesReadyChange(cachedEvent)
                 tabLayout.visibility = VISIBLE
-                viewPagerPagePerDevice[deviceId]?.let {
-                    viewPager.setCurrentItem(it, false)
-                }
+                // Restore the tab that was selected before the view was destroyed, or the
+                // per-device remembered tab if the device was previously connected.
+                // currentViewPagerPage is always up-to-date (updated by OnPageChangeCallback and
+                // onDestroyView), so it takes priority over the per-device map.
+                val pageToRestore = viewPagerPagePerDevice[deviceId] ?: currentViewPagerPage
+                viewPager.setCurrentItem(pageToRestore, false)
                 viewPager.visibility = VISIBLE
                 deviceConnectionStatusGroup.visibility = VISIBLE
                 phoneBleStatus.visibility = GONE
@@ -411,12 +489,12 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private fun offlineRecordingStateChange(offlineRecordingUiState: OfflineRecordingAvailabilityUiState) {
         if (offlineRecordingUiState.isAvailable) {
-            onlineOfflineAdapter.addOfflineRecordingFragment(offlineRecordingUiState.deviceId)
+            onlineOfflineAdapter.addOfflineRecordingFragment(offlineRecordingUiState.identifier)
         }
     }
 
     private fun sdkFeaturesReadyChange(event: SdkFeaturesReadyEvent) {
-        val deviceId = event.deviceId
+        val deviceId = event.identifier
         if (deviceId.isEmpty()) return
 
         if (event.readyFeatures.contains(PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ACTIVITY_DATA)) {

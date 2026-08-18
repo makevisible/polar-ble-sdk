@@ -7,6 +7,7 @@
     <string name="filter_by_name_prefix">Filter by name prefix</string>
     <string name="device_settings_header">Settings</string>
     <string name="ok_button">OK</string>
+    <string name="start_button">Start</string>
     <string name="stop_button">Stop</string>
     <string name="set">Set</string>
     <string name="submit">Submit</string>
@@ -29,7 +30,8 @@
     <string name="confirm_telemetry_data_delete">Confirm telemetry data delete</string>
     <string name="delete_button">Delete</string>
     <string name="set_warehouse_sleep_button_header">Set warehouse sleep</string>
-    <string name="set_warehouse_sleep_switch_header">Enable?</string>
+    <string name="set_hibernate_mode_button_header">Set hibernate mode</string>
+    <string name="telemetry_start_header">Start telemetry</string>
     <string name="set_turn_device_off_header">Turn device off</string>
     <string name="ohr_logging_enable">Enable OHR logging</string>
     <string name="ohr_logging_disable">Disable OHR logging</string>
@@ -63,6 +65,7 @@
     <string name="skin_temperature_button_text">Skin temperature data</string>
     <string name="file_attached_mail_text">Hello,\n see file attachment</string>
     <string name="force_stop_sleep_header">Stop sleep recording</string>
+    <string name="get_sleep_status_button">Get sleep status</string>
     <string name="ll_api_header">Low level API functions</string>
 
     <!-- Exercise activity -->
@@ -239,6 +242,9 @@
     <!-- BLE multi connection -->
     <string name="ble_enable_disable">Set BLE multi connection mode</string>
 
+    <!-- BLE multi connection -->
+    <string name="sensor_initiated_security_mode_enable_disable">Set sensor initiated security mode</string>
+
     <!-- Activity Recording -->
     <string name="active_time_result_text">"Active time result"</string>
     <string name="steps_analysis_result_text">"Steps analysis result"</string>
@@ -321,6 +327,7 @@
     <!-- Graphs -->
     <string name="graph">Graph</string>
     <string name="acc_value">ACC  x:%1$s  y:%2$s  z:%3$s</string>
+    <string name="ecg_value">ECG  %1$s µV</string>
 
     <!-- Generic API texts -->
     <string name="generic_api_generic_api_do_read_file_header">Read a file from device</string>
@@ -339,6 +346,9 @@
     <string name="generic_api_button_write">Write</string>
     <string name="generic_api_button_list">List</string>
     <string name="generic_api_button_delete">Delete</string>
+    <string name="generic_api_do_create_folder_header">Create a folder on device</string>
+    <string name="generic_api_do_create_folder">Folder path to create</string>
+    <string name="generic_api_button_create_folder">Create</string>
 
     <!-- Battery API texts -->
     <string name="charge_state_header">Read charge state</string>
@@ -381,6 +391,7 @@
     <!-- HR stream display -->
     <string name="hr_label_bpm">bpm: </string>
     <string name="hr_label_rrsms">rrsMs: </string>
+    <string name="hr_label_rr_raw_ms">RRs: </string>
     <string name="hr_label_contact">contact: </string>
     <string name="hr_rr_not_available">Not available</string>
 
@@ -406,4 +417,48 @@
     <string name="file_too_large_share_anyway">Share anyway</string>
     <string name="file_too_large_chooser_title">Share via…</string>
     <string name="file_compression_failed">Failed to compress files: %1$s</string>
+
+    <!-- Derived measurement -->
+    <string name="derived_section_header">Derived Measurement</string>
+    <string name="derived_enable_checkbox_label">Enable derived measurement (record statistics instead of raw ACC)</string>
+    <string name="derived_source_rate_label">Source Sample Rate (Hz)</string>
+    <string name="derived_time_window_label">Output Cadence (time window)</string>
+    <string name="derived_methods_label">Methods (select any combination)</string>
+    <string name="derived_dialog_title">Downsampled ACC Settings</string>
+    <string name="derived_select_methods_prompt">Select output methods (at least one):</string>
+
+    <!-- Derived measurement method display names -->
+    <string name="derived_method_downsample">Downsample (0) — last X, Y, Z per window</string>
+    <string name="derived_method_min">Min (1) — component-wise minimum</string>
+    <string name="derived_method_max">Max (2) — component-wise maximum</string>
+    <string name="derived_method_avg">Avg (3) — component-wise average</string>
+    <string name="derived_method_std">Std (4) — component-wise std deviation</string>
+    <string name="derived_method_norm">Norm (5) — 3D vector magnitude</string>
+    <string name="derived_method_min_of_norms">MinOfNorms (6) — minimum norm per window</string>
+    <string name="derived_method_max_of_norms">MaxOfNorms (7) — maximum norm per window</string>
+    <string name="derived_method_std_of_norms">StdOfNorms (8) — std dev of norms</string>
+    <string name="derived_method_norm_of_stds">NormOfStds (9) — norm of component stds</string>
+
+    <!-- Derived measurement error / info messages -->
+    <string name="derived_error_group_ids_failed">Failed to discover derived measurement group IDs</string>
+    <string name="derived_error_no_groups_for_acc">Device does not advertise any derived measurement settings groups for ACC</string>
+    <string name="derived_error_no_usable_group">No usable derived measurement settings group found for ACC</string>
+    <string name="derived_error_no_settings">No derived measurement settings available. Please fetch settings first.</string>
+    <string name="derived_error_no_valid_source_rate">No valid source sample rate available in derived measurement settings group</string>
+    <string name="derived_error_no_valid_time_window">No valid time window available in derived measurement settings group</string>
+    <string name="derived_error_no_source_type">No source measurement type available in derived measurement settings group</string>
+    <string name="derived_info_recording_started">Downsampled ACC recording started</string>
+    <string name="derived_info_recording_stopped">Downsampled ACC recording stopped</string>
+    <string name="sampling_rate">Sampling rate</string>
+
+    <string name="n_a">N/A</string>
+    <string name="dsacc">DSACC</string>
+
+    <!-- Export device logs -->
+    <string name="export_device_logs_title">Export device logs</string>
+    <string name="export_device_logs_button">Fetch device logs and telemetry</string>
+    <string name="export_device_logs_sharing_title">Device Logs</string>
+    <string name="export_device_logs_error">Failed to export device logs</string>
+    <string name="export_device_logs_empty">No log files found on device</string>
+
 </resources>

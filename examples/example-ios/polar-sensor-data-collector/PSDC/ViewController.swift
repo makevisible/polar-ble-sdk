@@ -35,7 +35,7 @@ class ViewController: UIViewController,
     @IBOutlet weak var accSelectButton: UIButton!
     @IBOutlet weak var connectionsButton: UIButton!
     @IBOutlet weak var disconnectButton: UIButton!
-    @IBOutlet weak var sensorDatalogButton: UIButton!
+    @IBOutlet weak var loggingSettingsButton: UIButton!
     
     var connectedDevices: [PolarDeviceInfo] = [] {
         didSet {
@@ -58,9 +58,9 @@ class ViewController: UIViewController,
     var previousEcgData: PolarEcgData?
     let collector = DataCollector()
     var elapsedTimer: DispatchSourceTimer?
-    var logConfig: SDLogConfig?
-    var supportsSdLog = false
-    
+    var logConfig: LogConfig?
+    var isLogConfigSupported = false
+
     @IBOutlet weak var ecgSwitch: UISwitch!
     @IBOutlet weak var ppiSwitch: UISwitch!
     @IBOutlet weak var ppgSwitch: UISwitch!
@@ -93,9 +93,9 @@ class ViewController: UIViewController,
         accSelectButton.clipsToBounds = true
         ppgSelectButton.layer.cornerRadius = 10
         ppgSelectButton.clipsToBounds = true
-        sensorDatalogButton.layer.cornerRadius = 10
-        sensorDatalogButton.clipsToBounds = true
-        sensorDatalogButton.isEnabled = false
+        loggingSettingsButton.layer.cornerRadius = 10
+        loggingSettingsButton.clipsToBounds = true
+        loggingSettingsButton.isEnabled = false
         api.observer = self
         api.deviceFeaturesObserver = self
         api.deviceHrObserver = self
@@ -138,12 +138,12 @@ class ViewController: UIViewController,
     
     @IBAction func sensorSettings(_ sender: Any) {
         if selectedDevice == nil {
-            sensorDatalogButton.isEnabled = false
+            loggingSettingsButton.isEnabled = false
         } else {
             checkLogConfigAvailability()
-            if self.supportsSdLog {
-                let storyboard = UIStoryboard(name: "SensorDatalogSettingsPopup", bundle: nil)
-                let datalogSettingsController = storyboard.instantiateViewController(withIdentifier: "SensorDatalogSettingsViewController") as! SensorDatalogSettingsViewController
+            if self.isLogConfigSupported {
+                let storyboard = UIStoryboard(name: "LoggingSettingsPopup", bundle: nil)
+                let datalogSettingsController = storyboard.instantiateViewController(withIdentifier: "LoggingSettingsViewController") as! LoggingSettingsViewController
                 datalogSettingsController.delegate = self
                 datalogSettingsController.api = api
                 datalogSettingsController.deviceId = self.selectedDevice!.deviceId
@@ -151,8 +151,8 @@ class ViewController: UIViewController,
                 self.modalPresentationStyle = UIModalPresentationStyle.currentContext
                 self.present(datalogSettingsController, animated: true, completion: nil)
             } else {
-                sensorDatalogButton.isEnabled = false
-                sensorDatalogButton.setTitle("Sensor Datalog not supported", for: .disabled)
+                loggingSettingsButton.isEnabled = false
+                loggingSettingsButton.setTitle("Logging settings not supported", for: .disabled)
             }
         }
     }
@@ -168,7 +168,7 @@ class ViewController: UIViewController,
         self.connectionsButton.setTitle("CONNECTIONS", for: .normal)
         do{
             try api.connectToDevice(device.deviceId)
-            sensorDatalogButton.isEnabled = true
+            loggingSettingsButton.isEnabled = true
         } catch let err {
             print("connect error: \(err)")
         }
@@ -178,10 +178,10 @@ class ViewController: UIViewController,
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                _ = try await api.getSDLogConfiguration(selectedDevice!.deviceId)
-                supportsSdLog = true
+                _ = try await api.getLogConfig(selectedDevice!.deviceId)
+                isLogConfigSupported = true
             } catch {
-                supportsSdLog = false
+                isLogConfigSupported = false
                 dismiss(animated: false)
             }
         }

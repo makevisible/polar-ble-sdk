@@ -142,6 +142,100 @@ class ZipCompressionHelperTest {
         assertTrue(!oldZipFile.exists(), "Old ZIP file should be cleaned up")
     }
 
+    // ── createDeviceLogsZipFile ───────────────────────────────────────────────
+
+    /**
+     * Test: createDeviceLogsZipFile produces a valid ZIP containing all log entries
+     * Expected: ZIP file exists, has correct entry names and byte-for-byte data
+     */
+    @Test
+    fun testCreateDeviceLogsZipFile_ContainsAllEntries() {
+        val logs = listOf(
+            "/ERRORLOG.BPB" to "error log".toByteArray(),
+            "/SYSLOG.TXT"   to "sys log".toByteArray(),
+            "/TRC1.BIN"     to byteArrayOf(0x01, 0x02, 0x03)
+        )
+
+        val zipFile = ZipCompressionHelper.createDeviceLogsZipFile(context, logs, deviceId = "A1B2C3")
+
+        assertTrue(zipFile.exists())
+        assertTrue(zipFile.length() > 0)
+
+        val entries = mutableMapOf<String, ByteArray>()
+        java.util.zip.ZipFile(zipFile).use { zf ->
+            for (entry in zf.entries()) {
+                entries[entry.name] = zf.getInputStream(entry).readBytes()
+            }
+        }
+
+        assertEquals(3, entries.size)
+        assertTrue(entries.containsKey("ERRORLOG.BPB"))
+        assertTrue(entries.containsKey("SYSLOG.TXT"))
+        assertTrue(entries.containsKey("TRC1.BIN"))
+        assertTrue(entries["ERRORLOG.BPB"]!!.contentEquals("error log".toByteArray()))
+        assertTrue(entries["SYSLOG.TXT"]!!.contentEquals("sys log".toByteArray()))
+        assertTrue(entries["TRC1.BIN"]!!.contentEquals(byteArrayOf(0x01, 0x02, 0x03)))
+
+        zipFile.delete()
+    }
+
+    /**
+     * Test: createDeviceLogsZipFile filename follows device_logs-<id>-<timestamp>.zip pattern
+     * Expected: Filename starts with "device_logs-A1B2C3-" and ends with ".zip"
+     */
+    @Test
+    fun testCreateDeviceLogsZipFile_FilenamePattern() {
+        val zipFile = ZipCompressionHelper.createDeviceLogsZipFile(
+            context,
+            listOf("/SYSLOG.TXT" to "data".toByteArray()),
+            deviceId = "A1B2C3"
+        )
+
+        assertTrue(
+            zipFile.name.startsWith("device_logs-A1B2C3-"),
+            "Filename '${zipFile.name}' should start with 'device_logs-A1B2C3-'"
+        )
+        assertTrue(zipFile.name.endsWith(".zip"))
+
+        zipFile.delete()
+    }
+
+    /**
+     * Test: createDeviceLogsZipFile uses "unknown" when deviceId is blank
+     * Expected: Filename contains "unknown" when no device ID is provided
+     */
+    @Test
+    fun testCreateDeviceLogsZipFile_BlankDeviceIdUsesUnknown() {
+        val zipFile = ZipCompressionHelper.createDeviceLogsZipFile(
+            context,
+            listOf("/SYSLOG.TXT" to "data".toByteArray()),
+            deviceId = ""
+        )
+
+        assertTrue(
+            zipFile.name.startsWith("device_logs-unknown-"),
+            "Filename '${zipFile.name}' should contain 'unknown' for blank deviceId"
+        )
+
+        zipFile.delete()
+    }
+
+    /**
+     * Test: createDeviceLogsZipFile with empty log list produces an empty (but valid) ZIP
+     * Expected: ZIP file is created with no entries
+     */
+    @Test
+    fun testCreateDeviceLogsZipFile_EmptyLogs() {
+        val zipFile = ZipCompressionHelper.createDeviceLogsZipFile(context, emptyList(), deviceId = "XYZ")
+
+        assertTrue(zipFile.exists())
+        var entryCount = 0
+        java.util.zip.ZipFile(zipFile).use { zf -> zf.entries().iterator().forEach { entryCount++ } }
+        assertEquals(0, entryCount)
+
+        zipFile.delete()
+    }
+
     /**
      * Test: Cleanup only removes old files
      * Expected: Recent ZIP files are not deleted

@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>APP_GIT_BRANCH</key>
-	<string>master</string>
+	<string>HEAD</string>
 	<key>APP_GIT_COMMIT</key>
-	<string>30d5fcd</string>
+	<string>7e6751a</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -23,33 +23,13 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.53.0</string>
+	<string>1.60.0</string>
 	<key>CFBundleVersion</key>
-	<string>1.53.0</string>
+	<string>1.60.0</string>
 	<key>GIT_APP_LOCALLY_MODIFIED</key>
-	<string>PSDC.xcodeproj/project.pbxproj
-PSDC/Info.plist
-PSDC/PSDCApp.swift
-PSDC/PolarBleDeviceManager.swift
-PSDC/PolarBleSdkManager.swift
-PSDC/SensorDatalogSettingsViewController.swift
-PSDC/SensorSelectPopupViewController.swift
-PSDC/SensorSettingsDialogViewController.swift
-PSDC/ViewController.swift
-PSDC/Views/DeviceSearch/DeviceSearchView.swift
-PSDC/Views/DeviceSettings/DevicesettingsView.swift
-PSDC/Views/Graph/AccDataHolder.swift
-PSDC/Views/Graph/HrDataHolder.swift
-PSDC/Views/HrBroadcast/HrBroadcastView.swift
-PSDC/Views/OfflineExerciseV2/OfflineExerciseV2View.swift
-PSDC/Views/OfflineRecording/OfflineRecordingStartView.swift
-Podfile</string>
+	<string></string>
 	<key>GIT_SDK_LOCALLY_MODIFIED</key>
-	<string>PolarBleSdk.podspec
-Sources/PolarBleSdk/sdk/impl/utils/PolarTrainingSessionUtils.swift
-Sources/iOSCommunications/ble/api/model/gatt/BleGattClientBase.swift
-Tests/PolarBleSdkTests/PolarTrainingSessionUtilsTest.swift
-iOSCommunications.xcodeproj/project.pbxproj</string>
+	<string></string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.healthcare-fitness</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -61,9 +41,9 @@ iOSCommunications.xcodeproj/project.pbxproj</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Allowing this gives you the access to the full set of Bluetooth features.</string>
 	<key>SDK_GIT_BRANCH</key>
-	<string>feature/TC-73337-rxswift-replacement-ios-replacing-rxswift-with-swift-async</string>
+	<string>feature/TC-75165-sdk-and-psdc-ios-support-putting-device-to-hibernate-state</string>
 	<key>SDK_GIT_COMMIT</key>
-	<string>d6d36a10</string>
+	<string>1476c3fd</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>

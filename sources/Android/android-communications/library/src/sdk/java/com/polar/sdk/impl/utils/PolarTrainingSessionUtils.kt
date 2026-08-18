@@ -31,6 +31,30 @@ internal object PolarTrainingSessionUtils {
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ENGLISH)
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd", Locale.ENGLISH)
 
+    internal data class TrainingSessionNode(
+        val date: String?,
+        val time: String?,
+        val path: String,
+        val dataType: PolarTrainingSessionDataTypes,
+        val fileSize: Long,
+        var children: MutableList<TrainingSessionChildNode> = mutableListOf()
+    )
+
+    internal data class TrainingSessionChildNode(
+        val exerciseIndex: Int,
+        val date: String?,
+        val time: String?,
+        var children: MutableList<ExerciseNode> = mutableListOf()
+    )
+
+    internal data class ExerciseNode(
+        val date: String?,
+        val time: String?,
+        val path: String,
+        val dataType: PolarExerciseDataTypes,
+        val fileSize: Long,
+    )
+
     fun getTrainingSessionReferences(
         client: BlePsFtpClient,
         fromDate: LocalDate? = null,
@@ -42,7 +66,9 @@ internal object PolarTrainingSessionUtils {
         val endDateInt = toDate?.let { dateFormatter.format(it).toInt() } ?: Int.MAX_VALUE
 
         val references = mutableListOf<PolarTrainingSessionReference>()
-        val trainingSessionSummaryPaths = hashSetOf<String>()
+        var trainingPathList = mutableListOf<Pair<String, Long>>()
+        var trainingNodeList = mutableListOf<Pair<String?, TrainingSessionNode>>()
+        var trainingSessionChildNodeList = mutableListOf<TrainingSessionChildNode>()
 
         PolarFileUtils.fetchRecursively(
             client = client,
@@ -58,95 +84,96 @@ internal object PolarTrainingSessionUtils {
             tag = TAG,
             recurseDeep = true
         ).collect { (path, fileSize) ->
-            BleLogger.d(TAG, "path: $path, size: $fileSize bytes")
-            val dataType =
-                PolarTrainingSessionDataTypes.entries.firstOrNull { path.endsWith(it.deviceFileName) }
-                    ?: PolarExerciseDataTypes.entries.firstOrNull { path.endsWith(it.deviceFileName) }
+            // Collect matching files to a list first
+            val match = Regex("/U/0/(\\d{8})/E/(\\d{6})(?:/(\\d+))?/[^/]+$").find(path)
+            val dateStr = match?.groups?.get(1)?.value
+            val timeStr = match?.groups?.get(2)?.value
+            val dateInt = dateStr?.toIntOrNull()
 
-            if (dataType != null) {
-                BleLogger.d(TAG, "Data type matched: $dataType, file size: $fileSize bytes")
-                val match = Regex("/U/0/(\\d{8})/E/(\\d{6})(?:/(\\d+))?/[^/]+$").find(path)
+            if (dateStr != null && timeStr != null && dateInt != null && dateInt in startDateInt..endDateInt) {
+                trainingPathList.add(0, Pair(path, fileSize))
+                BleLogger.d(TAG, "path: $path, size: $fileSize bytes")
+            }
+        }.also {
+            trainingPathList.sortByDescending { (path, _) ->
+                path.endsWith(PolarTrainingSessionDataTypes.TRAINING_SESSION_SUMMARY.deviceFileName)
+            }
+            for (path in trainingPathList) {
+                val match = Regex("/U/0/(\\d{8})/E/(\\d{6})(?:/(\\d+))?/[^/]+$").find(path.first)
                 val dateStr = match?.groups?.get(1)?.value
                 val timeStr = match?.groups?.get(2)?.value
                 val exerciseIndex = match?.groups?.get(3)?.value?.toIntOrNull()
-                val dateInt = dateStr?.toIntOrNull()
+                val dataType =
+                    PolarTrainingSessionDataTypes.entries.firstOrNull { path.first.endsWith(it.deviceFileName) }
+                        ?: PolarExerciseDataTypes.entries.firstOrNull { path.first.endsWith(it.deviceFileName) }
 
-                if (dateStr != null && timeStr != null && dateInt != null && dateInt in startDateInt..endDateInt) {
-                    val date = LocalDate.parse("$dateStr$timeStr", dateTimeFormatter)
-                    BleLogger.d(TAG, "Parsed date: $date")
-                    val existingReference = references.find { it.date == date }
-
-                    if (dataType is PolarTrainingSessionDataTypes) {
-                        trainingSessionSummaryPaths.add(path)
-                        if (existingReference != null) {
-                            if (!existingReference.trainingDataTypes.contains(dataType)) {
-                                val updatedReference = existingReference.copy(
-                                    trainingDataTypes = existingReference.trainingDataTypes + dataType,
-                                    fileSize = existingReference.fileSize + fileSize
-                                )
-                                references[references.indexOf(existingReference)] = updatedReference
-                            }
-                        } else {
-                            references.add(
-                                PolarTrainingSessionReference(
-                                    date = date,
-                                    path = path,
-                                    trainingDataTypes = listOf(dataType),
-                                    exercises = emptyList(),
-                                    fileSize = fileSize
-                                )
+                if (dataType is PolarTrainingSessionDataTypes) {
+                    if (trainingNodeList.find { it.first == dateStr} == null) {
+                        trainingNodeList.add(
+                            Pair(
+                                dateStr,
+                                TrainingSessionNode(dateStr, timeStr, path.first, dataType, path.second)
                             )
-                        }
-                    } else if (dataType is PolarExerciseDataTypes) {
-                        val exIndex = exerciseIndex ?: 0
-                        val fileName = path.substringAfterLast("/")
-                        val summaryPrefix = "/U/0/$dateStr/E/$timeStr"
-                        val possibleSummary = trainingSessionSummaryPaths.find { path.startsWith(summaryPrefix) }
-
-                        if (possibleSummary != null) {
-                            val newExercise = PolarExercise(
-                                index = exIndex,
-                                path = path,
-                                exerciseDataTypes = listOf(dataType),
-                                fileSizes = mapOf(fileName to fileSize)
-                            )
-                            if (existingReference != null) {
-                                val updatedExercises = existingReference.exercises.toMutableList()
-                                val existingExercise = updatedExercises.find { it.index == exIndex }
-                                if (existingExercise != null) {
-                                    val mergedExercise = existingExercise.copy(
-                                        exerciseDataTypes = (existingExercise.exerciseDataTypes + dataType).distinct(),
-                                        fileSizes = existingExercise.fileSizes + (fileName to fileSize)
-                                    )
-                                    updatedExercises[updatedExercises.indexOf(existingExercise)] = mergedExercise
-                                } else {
-                                    updatedExercises.add(newExercise)
-                                }
-                                val updatedReference = existingReference.copy(
-                                    exercises = updatedExercises,
-                                    fileSize = existingReference.fileSize + fileSize
-                                )
-                                references[references.indexOf(existingReference)] = updatedReference
-                            } else {
-                                references.add(
-                                    PolarTrainingSessionReference(
-                                        date = date,
-                                        path = path,
-                                        trainingDataTypes = emptyList(),
-                                        exercises = listOf(newExercise),
-                                        fileSize = fileSize
-                                    )
-                                )
-                            }
-                        }
+                        )
                     }
+                }  else if (dataType is PolarExerciseDataTypes) {
+                    var exercise =
+                        ExerciseNode(dateStr, timeStr, path.first, dataType, path.second)
+
+                    trainingSessionChildNodeList.find { it.exerciseIndex == exerciseIndex &&  it.date == dateStr &&  it.time == timeStr}?.children?.add(exercise)
+                        ?: trainingSessionChildNodeList.add(
+                            TrainingSessionChildNode(
+                                exerciseIndex ?: 0,
+                                 dateStr,
+                                 timeStr,
+                                mutableListOf(exercise)
+                            )
+                        )
+                    trainingNodeList.find { it.first == dateStr }?.second?.children =
+                        trainingSessionChildNodeList.filter { it.date == dateStr } as MutableList<TrainingSessionChildNode>
                 }
+            }
+        }.also {
+            for (trainingNode in trainingNodeList) {
+                var dataTypes = mutableListOf<PolarTrainingSessionDataTypes>()
+                val training = trainingNode.second
+                var exercises = mutableListOf<PolarExercise>()
+                var fileSizes = mutableMapOf<String, Long>()
+                dataTypes.add(training.dataType)
+
+                for (trainingSessionChild in training.children) {
+                    var exerciseDataTypes = mutableListOf<PolarExerciseDataTypes>()
+                    for (exercise in trainingSessionChild.children) {
+                        exerciseDataTypes.add(exercise.dataType)
+                        fileSizes[exercise.dataType.deviceFileName] = exercise.fileSize
+                    }
+                    exercises.add(
+                        PolarExercise(
+                            index = trainingSessionChild.exerciseIndex,
+                            exerciseDataTypes = exerciseDataTypes.toList(),
+                            path = "/U/0/${training.date}/E/${training.time}/" + String.format("%02d", trainingSessionChild.exerciseIndex) + "/BASE.BPB",
+                            fileSizes = fileSizes
+                        )
+                    )
+                }
+
+                var exercisesFileSize = 0L
+                exercises.forEach { exercisesFileSize += it.fileSizes.values.sum() }
+                references.add(
+                    PolarTrainingSessionReference(
+                        date = LocalDate.parse("${training.date+training.time}", dateTimeFormatter),
+                        path = training.path,
+                        trainingDataTypes = dataTypes,
+                        exercises = exercises,
+                        fileSize =  exercisesFileSize + training.fileSize
+                    )
+                )
             }
         }
 
         BleLogger.d(TAG, "Collected ${references.size} training session references:")
-        references.forEachIndexed { index, ref ->
-            BleLogger.d(TAG, "[$index] date=${ref.date}, totalSize=${ref.fileSize} bytes, path=${ref.path}")
+        references.forEachIndexed { exerciseIndex, ref ->
+            BleLogger.d(TAG, "[$exerciseIndex] date=${ref.date}, totalSize=${ref.fileSize} bytes, path=${ref.path}")
             BleLogger.d(TAG, "  Training data types: ${ref.trainingDataTypes}")
             ref.exercises.forEach { exercise ->
                 BleLogger.d(TAG, "  Exercise ${exercise.index}: ${exercise.fileSizes.values.sum()} bytes")
@@ -265,6 +292,14 @@ internal object PolarTrainingSessionUtils {
 
     suspend fun deleteTrainingSession(client: BlePsFtpClient, reference: PolarTrainingSessionReference) {
         val components = reference.path.split("/").toTypedArray()
+        // Expected path format: /U/0/<date>/E/<time>/<exercise>
+        // components[3] = <date>, components[5] = <time>
+        if (components.size < 4) {
+            throw IllegalArgumentException(
+                "deleteTrainingSession: unexpected path format '${reference.path}' " +
+                "(expected at least 4 components, got ${components.size})"
+            )
+        }
         val exerciseParent = ARABICA_USER_ROOT_FOLDER + components[3] + "/E/"
 
         val listOp = PftpRequest.PbPFtpOperation.newBuilder()
@@ -278,6 +313,12 @@ internal object PolarTrainingSessionUtils {
             val removePath = if (directory.entriesCount <= 1) {
                 "/U/0/${components[3]}/E/"
             } else {
+                if (components.size < 6) {
+                    throw IllegalArgumentException(
+                        "deleteTrainingSession: path '${reference.path}' too short to resolve exercise sub-path " +
+                        "(need at least 6 components for multi-exercise deletion, got ${components.size})"
+                    )
+                }
                 "/U/0/${components[3]}/E/${components[5]}/"
             }
             val removeOp = PftpRequest.PbPFtpOperation.newBuilder()

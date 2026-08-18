@@ -315,6 +315,19 @@
             android:textSize="12sp"
             android:visibility="gone"
             tools:visibility="visible" />
+
+        <Button
+            android:id="@+id/open_ecg_graph_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp"
+            android:text="@string/graph"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:visibility="visible" />
     </LinearLayout>
 
     <LinearLayout

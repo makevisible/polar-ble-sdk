@@ -7,6 +7,7 @@ import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdOfflineT
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdSecret
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.PmdSetting
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.model.AccData
+import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.model.DerivedAccData
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.model.EcgData
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.model.GnssLocationData
 import com.polar.androidcommunications.api.ble.model.gatt.client.pmd.model.GyrData
@@ -138,6 +139,7 @@ internal object PolarDataUtils {
                     hr = sample.hr,
                     ppgQuality = sample.ppgQuality,
                     correctedHr = sample.correctedHr,
+                    rrs = emptyList(),
                     rrsMs = emptyList(),
                     rrAvailable = false,
                     contactStatus = false,
@@ -270,6 +272,20 @@ internal object PolarDataUtils {
             samples.add(PolarAccelerometerData.PolarAccelerometerDataSample(timeStamp.toLong(), x, y, z))
         }
         return PolarAccelerometerData(samples)
+    }
+
+    fun mapPmdClientDerivedAccDataToPolarDerivedAcc(derivedAccData: DerivedAccData): PolarDerivedAccData {
+        val samples = derivedAccData.derivedSamples.map { sample ->
+            val methodValues = sample.methodValues
+                .mapNotNull { (id, values) -> PolarDerivedMeasurementMethod.fromId(id)?.let { it to values } }
+                .toMap()
+            PolarDerivedSample(
+                timeStamp = sample.timeStamp.toLong(),
+                activeMethods = methodValues.keys,
+                methodValues = methodValues
+            )
+        }
+        return PolarDerivedAccData(samples)
     }
 
     fun mapPmdClientGyroDataToPolarGyro(gyroData: GyrData): PolarGyroData {
@@ -466,6 +482,72 @@ internal object PolarDataUtils {
             samples.add(PolarTemperatureData.PolarTemperatureDataSample(timeStamp.toLong(), temperature))
         }
         return PolarTemperatureData(samples)
+    }
+
+    /**
+     * Maps a [PmdSetting] (returned by Get Derived Measurement Settings Group) to a
+     * [PolarDerivedMeasurementSettingsGroup] for SDK consumers.
+     *
+     * @param requestedGroupId the group ID used when querying this settings block.  Used as a
+     *   fallback when the device does NOT echo the GROUP_ID field in the response payload (which is
+     *   common).  Without this fallback groupId would silently default to 0, causing
+     *   ERROR_INVALID_DERIVED_MEASUREMENT_SETTINGS_GROUP on the subsequent start command.
+     */
+    fun mapPmdSettingsToPolarDerivedMeasurementSettingsGroup(
+        pmdSetting: PmdSetting,
+        requestedGroupId: Int = 0
+    ): PolarDerivedMeasurementSettingsGroup {
+        val groupId = pmdSetting.settings[PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_SETTINGS_GROUP_ID]
+            ?.firstOrNull() ?: requestedGroupId
+
+        val sourceTypes = pmdSetting.settings[PmdSetting.PmdSettingType.SOURCE_MEASUREMENT_TYPE]
+            ?.mapNotNull { id ->
+                try {
+                    mapPmdClientFeatureToPolarFeature(PmdMeasurementType.fromId(id.toByte()))
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            ?.toSet() ?: emptySet()
+
+        val sourceSampleRates = pmdSetting.settings[PmdSetting.PmdSettingType.SOURCE_MEASUREMENT_SAMPLE_RATE]
+            ?.toSet() ?: emptySet()
+
+        val timeWindowOptions = pmdSetting.settings[PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_TIME_WINDOW]
+            ?.toSet() ?: emptySet()
+
+        val supportedMethods = pmdSetting.settings[PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_METHOD]
+            ?.mapNotNull { methodId -> PolarDerivedMeasurementMethod.fromId(methodId) }
+            ?.toSet() ?: emptySet()
+
+        return PolarDerivedMeasurementSettingsGroup(
+            groupId = groupId,
+            sourceTypes = sourceTypes,
+            sourceSampleRates = sourceSampleRates,
+            timeWindowOptions = timeWindowOptions,
+            supportedMethods = supportedMethods
+        )
+    }
+
+    /**
+     * Maps [PolarDerivedMeasurementSettings] to a [PmdSetting] ready for serialization
+     * in a Request Measurement Start command.
+     *
+     * Selected methods are encoded as a bitmask stored in the single Int for
+     * [PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_METHOD]. [PmdSetting.serializeSelected]
+     * expands this bitmask back to individual 1-byte method IDs on the wire.
+     */
+    fun mapPolarDerivedMeasurementSettingsToPmdSettings(settings: PolarDerivedMeasurementSettings): PmdSetting {
+        val methodBitmask = settings.selectedMethods.fold(0) { acc, m -> acc or (1 shl m.id) }
+        val selected: MutableMap<PmdSetting.PmdSettingType, Int> = mutableMapOf(
+            PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_SETTINGS_GROUP_ID to settings.groupId,
+            PmdSetting.PmdSettingType.SOURCE_MEASUREMENT_TYPE to
+                    mapPolarFeatureToPmdClientMeasurementType(settings.sourceMeasurementType).numVal.toInt(),
+            PmdSetting.PmdSettingType.SOURCE_MEASUREMENT_SAMPLE_RATE to settings.sourceSampleRate,
+            PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_TIME_WINDOW to settings.timeWindowMs,
+            PmdSetting.PmdSettingType.DERIVED_MEASUREMENT_METHOD to methodBitmask
+        )
+        return PmdSetting(selected)
     }
 }
 

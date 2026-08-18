@@ -17,7 +17,42 @@ class PmdSetting {
         RANGE_MILLIUNIT(3),
         CHANNELS(4),
         FACTOR(5),
-        SECURITY(6);
+        SECURITY(6),
+
+        /**
+         * Derived measurement method bitmask
+         * In selected map, stored as bitmask where bit N = method N selected.
+         * Multiple method IDs are serialized individually (1 byte each) in the BLE packet.
+         */
+        DERIVED_MEASUREMENT_METHOD(7),
+
+        /**
+         * Source measurement type for derived measurement.
+         * Value is the numeric value of the source PmdMeasurementType (e.g. 2 for ACC).
+         */
+        SOURCE_MEASUREMENT_TYPE(8),
+
+        /**
+         * Source measurement sample rate in Hz.
+         */
+        SOURCE_MEASUREMENT_SAMPLE_RATE(9),
+
+        /**
+         * Source measurement range chosen by device — returned in start response only,
+         * not sent in Request Measurement Start.
+         */
+        SOURCE_MEASUREMENT_RANGE(10),
+
+        /**
+         * Derived measurement time window in milliseconds.
+         * Determines the output cadence, e.g. 1000 ms = 1 Hz output.
+         */
+        DERIVED_MEASUREMENT_TIME_WINDOW(11),
+
+        /**
+         * Derived measurement settings group ID.
+         */
+        DERIVED_MEASUREMENT_SETTINGS_GROUP_ID(12);
     }
 
     // available settings
@@ -45,7 +80,9 @@ class PmdSetting {
         }
         var offset = 0
         while (offset < data.size) {
-            val type = PmdSettingType.values()[data[offset++].toInt()]
+            val typeId = data[offset++].toInt() and 0xFF
+            val type = PmdSettingType.values().firstOrNull { it.numVal == typeId }
+                ?: throw IllegalArgumentException("Unknown PmdSettingType ID: $typeId in BLE settings data")
             var count = data[offset++].toInt()
             val items: MutableSet<Int> = HashSet()
             while (count-- > 0) {
@@ -89,7 +126,21 @@ class PmdSetting {
     fun serializeSelected(): ByteArray {
         val outputStream = ByteArrayOutputStream()
         for ((key, value) in selected) {
-            if (key == PmdSettingType.FACTOR) {
+            // FACTOR and SOURCE_MEASUREMENT_RANGE are response-only; do not include in request
+            if (key == PmdSettingType.FACTOR || key == PmdSettingType.SOURCE_MEASUREMENT_RANGE) {
+                continue
+            }
+
+            // DERIVED_MEASUREMENT_METHOD: value is a bitmask (bit N = method N selected).
+            // Expand to individual 1-byte method IDs per SAGRFC 85.15.
+            // e.g. bitmask=1 (bit 0) → DOWNSAMPLE id=0 → [type=7][count=1][0x00]
+            //      bitmask=3 (bits 0+1) → DOWNSAMPLE+MIN  → [type=7][count=2][0x00][0x01]
+            if (key == PmdSettingType.DERIVED_MEASUREMENT_METHOD) {
+                val methodIds = (0..15).filter { (value shr it) and 1 == 1 }
+                if (methodIds.isEmpty()) continue
+                outputStream.write(key.numVal)
+                outputStream.write(methodIds.size)
+                methodIds.forEach { outputStream.write(it) }
                 continue
             }
 
@@ -136,6 +187,12 @@ class PmdSetting {
                 PmdSettingType.CHANNELS -> 1
                 PmdSettingType.FACTOR -> 4
                 PmdSettingType.SECURITY -> 16
+                PmdSettingType.DERIVED_MEASUREMENT_METHOD -> 1     // 1 byte per method ID
+                PmdSettingType.SOURCE_MEASUREMENT_TYPE -> 1
+                PmdSettingType.SOURCE_MEASUREMENT_SAMPLE_RATE -> 2
+                PmdSettingType.SOURCE_MEASUREMENT_RANGE -> 4  // milliunit range (same width as RANGE_MILLIUNIT)
+                PmdSettingType.DERIVED_MEASUREMENT_TIME_WINDOW -> 4
+                PmdSettingType.DERIVED_MEASUREMENT_SETTINGS_GROUP_ID -> 1
             }
         }
 
@@ -155,6 +212,11 @@ class PmdSetting {
         }
 
         private fun validateSetting(setting: Map.Entry<PmdSettingType, Int>) {
+            // DERIVED_MEASUREMENT_METHOD stores a bitmask (bits 0-9 correspond to methods 0-9);
+            // skip the standard byte-range check since the bitmask may exceed 0xFF.
+            if (setting.key == PmdSettingType.DERIVED_MEASUREMENT_METHOD) {
+                return
+            }
             val fieldSize = typeToFieldSize(setting.key)
             val value = setting.value
             if (fieldSize == 1 && (value < 0x0 || 0xFF < value)) {

@@ -12,6 +12,7 @@ public enum PolarOfflineRecordingData  {
     case temperatureOfflineRecordingData(PolarTemperatureData, startTime:Date)
     case skinTemperatureOfflineRecordingData(PolarTemperatureData, startTime:Date)
     case emptyData(startTime:Date)
+    case derivedAccOfflineRecordingData(PolarDerivedAccData, startTime:Date, settings:PolarSensorSetting?)
 }
 
 public struct PolarOfflineRecordingProgress {

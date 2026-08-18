@@ -10,7 +10,18 @@ enum class PmdControlPointCommandClientToService(val code: Int) {
     GET_SDK_MODE_STATUS(6),
     GET_OFFLINE_RECORDING_TRIGGER_STATUS(7),
     SET_OFFLINE_RECORDING_TRIGGER_MODE(8),
-    SET_OFFLINE_RECORDING_TRIGGER_SETTINGS(9);
+    SET_OFFLINE_RECORDING_TRIGGER_SETTINGS(9),
+
+    /**
+     * Fetch all settings available for one Derived Measurement Settings Group.
+     * Takes the group ID as a single byte parameter.
+     */
+    GET_DERIVED_MEASUREMENT_SETTINGS_GROUP(0x0A);
+
+    companion object {
+        fun fromCode(code: Int): PmdControlPointCommandClientToService? =
+            values().firstOrNull { it.code == code }
+    }
 }
 
 enum class PmdControlPointCommandServiceToClient(val code: Int) {

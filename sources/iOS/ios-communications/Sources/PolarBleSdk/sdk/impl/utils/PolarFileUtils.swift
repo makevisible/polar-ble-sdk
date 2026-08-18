@@ -122,6 +122,24 @@ class PolarFileUtils {
         }
     }
 
+    func tryFetchFile(client: BlePsFtpClient, path: String) async -> Data? {
+        do {
+            var operation = Protocol_PbPFtpOperation()
+            operation.command = .get
+            operation.path = path
+            let request = try operation.serializedData()
+            let data = try await client.request(request)
+            return data as Data
+        } catch {
+            if case let BlePsFtpException.responseError(code) = error, code == 103 {
+                BleLogger.trace("tryFetchFile: \(path) not found on device, skipping")
+            } else {
+                BleLogger.error("tryFetchFile: \(path) skipped (\(error.localizedDescription))")
+            }
+            return nil
+        }
+    }
+
     func getFile(identifier: String, filePath: String) async throws -> NSData {
         do {
             let session = try serviceClientUtils?.sessionFtpClientReady(identifier)
@@ -184,50 +202,4 @@ class PolarFileUtils {
         return calendar.date(from: dc)!
     }
 
-    // MARK: - BLE Low Level APIs
-
-    func writeFile(identifier: String, filePath: String, fileData: Data) async throws {
-        let session = try serviceClientUtils?.sessionFtpClientReady(identifier)
-        guard let client = session?.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-            throw PolarErrors.serviceNotFound
-        }
-        var builder = Protocol_PbPFtpOperation()
-        builder.command = .put
-        builder.path = filePath
-        let proto = try builder.serializedData()
-        let inputStream = InputStream(data: fileData)
-        for try await _ in client.write(proto as NSData, data: inputStream) {}
-    }
-
-    func readFile(identifier: String, filePath: String) async throws -> Data {
-        let data = try await getFile(identifier: identifier, filePath: filePath)
-        return data as Data
-    }
-
-    func listFiles(identifier: String, directoryPath: String, recurseDeep: Bool = false) async throws -> [String] {
-        let condition = { (entry: String) -> Bool in entry.contains(".") || entry == "" }
-        var fileList = [String]()
-        for try await file in listFiles(identifier: identifier, folderPath: directoryPath, condition: condition, recurseDeep: recurseDeep) {
-            fileList.append(file)
-        }
-        return fileList
-    }
-
-    // Visible fork: list files (recursively) returning (path, sizeBytes) tuples.
-    // Upstream listFiles drops sizes; the Files Viewer diagnostics tooling needs them.
-    func listFilesWithSizes(identifier: String, directoryPath: String, recurseDeep: Bool = true) async throws -> [(name: String, size: UInt64)] {
-        let condition = { (entry: String) -> Bool in entry.contains(".") || entry == "" }
-        let session = try self.serviceClientUtils?.sessionFtpClientReady(identifier)
-        guard let client = session?.fetchGattClient(BlePsFtpClient.PSFTP_SERVICE) as? BlePsFtpClient else {
-            throw PolarErrors.serviceNotFound
-        }
-        var path = directoryPath
-        if path.first != "/" { path.insert("/", at: path.startIndex) }
-        if path.last != "/" { path.insert("/", at: path.endIndex) }
-        return try await fetchRecursive(path, client: client, condition: condition, recurseDeep: recurseDeep)
-    }
-
-    func deleteFile(identifier: String, filePath: String) async throws {
-        _ = try await removeSingleFile(identifier: identifier, filePath: filePath)
-    }
 }
