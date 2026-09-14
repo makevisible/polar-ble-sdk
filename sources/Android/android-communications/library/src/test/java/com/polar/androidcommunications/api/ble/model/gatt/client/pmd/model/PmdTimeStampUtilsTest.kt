@@ -193,4 +193,76 @@ internal class PmdTimeStampUtilsTest {
         Assert.assertEquals(samplesSize, timestamps.size)
         Assert.assertEquals(timeStamp, timestamps[0])
     }
+
+    // Values from a Polar 360 offline ACC recording (Sentry c746827caacc4a3f851d7af933ab0bf3):
+    // the frame sits ~24 h behind its predecessor after a device clock correction.
+    private val backwardsFrameTimeStamp = 842448599964455567uL
+    private val backwardsJump = 86278982924616uL
+
+    @Test
+    fun `frame behind previous frame is spaced at the sample rate`() {
+        // Arrange
+        val previousTimeStamp = backwardsFrameTimeStamp + backwardsJump
+        val samplesSize = 100
+        val samplingRate = 52
+        val expectedDelta = PmdTimeStampUtils.deltaFromSamplingRate(samplingRate)
+
+        // Act
+        val timestamps = PmdTimeStampUtils.getTimeStamps(
+            previousFrameTimeStamp = previousTimeStamp,
+            frameTimeStamp = backwardsFrameTimeStamp,
+            samplesSize = samplesSize,
+            sampleRate = samplingRate
+        )
+
+        // Assert: anchored on the frame, never on the stale previous frame.
+        Assert.assertEquals(samplesSize, timestamps.size)
+        Assert.assertEquals(backwardsFrameTimeStamp, timestamps.last())
+        Assert.assertTrue(
+            "Expected timestamps to stay at or below the frame, got max ${timestamps.max()}",
+            timestamps.all { it <= backwardsFrameTimeStamp }
+        )
+        Assert.assertEquals(
+            round(expectedDelta * (samplesSize - 1)),
+            (timestamps.last() - timestamps.first()).toDouble(),
+            // Double loses ~128 ns of resolution at Polar epoch magnitudes; 1 us is still far
+            // below the 19 ms spacing of a 52 Hz frame.
+            1000.0
+        )
+        Assert.assertEquals(
+            timestamps.sorted().distinct(),
+            timestamps
+        )
+    }
+
+    @Test
+    fun `assert on frame behind previous frame with no sample rate`() {
+        // Arrange
+        val previousTimeStamp = backwardsFrameTimeStamp + backwardsJump
+
+        // Act & Assert: without a sample rate there is nothing to fall back to.
+        assertThrows(TimeStampAndFrequencyZeroError::class.java) {
+            PmdTimeStampUtils.getTimeStamps(
+                previousFrameTimeStamp = previousTimeStamp,
+                frameTimeStamp = backwardsFrameTimeStamp,
+                samplesSize = 100,
+                sampleRate = 0
+            )
+        }
+    }
+
+    @Test
+    fun `assert delta from time stamps rejects a backwards jump instead of wrapping`() {
+        // Arrange
+        val previousTimeStamp = backwardsFrameTimeStamp + backwardsJump
+
+        // Act & Assert
+        val error = assertThrows(NegativeTimeStampError::class.java) {
+            PmdTimeStampUtils.deltaFromTimeStamps(previousTimeStamp, backwardsFrameTimeStamp, 100)
+        }
+        Assert.assertTrue(
+            "Expected the backwards jump to be named, got: ${error.detailMessage}",
+            error.detailMessage.contains("previous timestamp: $previousTimeStamp")
+        )
+    }
 }
