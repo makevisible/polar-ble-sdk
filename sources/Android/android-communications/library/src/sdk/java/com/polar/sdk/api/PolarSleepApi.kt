@@ -1,6 +1,7 @@
 package com.polar.sdk.api
 
 import com.polar.sdk.api.model.sleep.PolarSleepData
+import com.polar.sdk.api.model.sleep.PolarSleepRecordingStatus
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Completable
@@ -27,6 +28,24 @@ interface PolarSleepApi {
      * @return [Flowable] of boolean values indicating if sleep recording is ongoing
      */
     fun observeSleepRecordingState(identifier: String):  Flowable<Array<Boolean>>
+
+    /**
+     * Get sleep recording status. Unlike [getSleepRecordingState], a state the device does not
+     * report is [PolarSleepRecordingStatus.UNKNOWN] instead of off.
+     *
+     * @param identifier The Polar device ID or BT address
+     * @return A [Single] with the status of the first sleep recording state event
+     */
+    fun getSleepRecordingStatus(identifier: String): Single<PolarSleepRecordingStatus>
+
+    /**
+     * Observe sleep recording status. Unlike [observeSleepRecordingState], a state the device does
+     * not report is [PolarSleepRecordingStatus.UNKNOWN] instead of off.
+     *
+     * @param identifier The Polar device ID or BT address
+     * @return [Flowable] of the statuses in each sleep recording state event batch
+     */
+    fun observeSleepRecordingStatus(identifier: String): Flowable<Array<PolarSleepRecordingStatus>>
 
     /**
      * Stop sleep recording
