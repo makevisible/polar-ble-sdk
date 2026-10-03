@@ -5,6 +5,7 @@ import com.polar.androidcommunications.api.ble.model.gatt.client.psftp.BlePsFtpC
 import com.polar.androidcommunications.api.ble.model.gatt.client.psftp.BlePsFtpUtils
 import com.polar.androidcommunications.api.ble.BleLogger
 import com.polar.sdk.api.RestApiEventPayload
+import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.schedulers.Schedulers
 import java.io.ByteArrayOutputStream
@@ -52,9 +53,9 @@ private fun BlePsFtpClient.decompressProtobufByteArray(input: ByteArray): ByteAr
     }
 }
 
-fun BlePsFtpClient.receiveRestApiEvents (identifier: String): Flowable<List<String>>{
+fun BlePsFtpClient.receiveRestApiEvents (identifier: String, onSubscribed: Completable = Completable.complete()): Flowable<List<String>>{
     val TAG = "BlePsFtpClient"
-    return receiveRestApiEventData(identifier)
+    return onSubscribed.andThen(receiveRestApiEventData(identifier))
         .map { array: Array<ByteArray> ->
             array.map { it.toString(kotlin.text.Charsets.UTF_8) }
         }
