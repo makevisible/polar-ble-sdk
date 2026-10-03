@@ -617,11 +617,11 @@ class PolarActivityUtilsTest {
                 ).build().writeTo(this)
         }
 
-        val date = Date()
-        val expectedDirectoryPath = "/U/0/${dateFormat.format(date)}/ACT/"
-        val expectedFilePath1 = "/U/0/${dateFormat.format(date)}/ACT/ASAMPL0.BPB"
-        val expectedFilePath2 = "/U/0/${dateFormat.format(date)}/ACT/ASAMPL1.BPB"
-        val expectedFilePath3 = "/U/0/${dateFormat.format(date)}/ACT/ASAMPL2.BPB"
+        val date = LocalDate.now()
+        val expectedDirectoryPath = "/U/0/${date.format(dateFormatter)}/ACT/"
+        val expectedFilePath1 = "/U/0/${date.format(dateFormatter)}/ACT/ASAMPL0.BPB"
+        val expectedFilePath2 = "/U/0/${date.format(dateFormatter)}/ACT/ASAMPL1.BPB"
+        val expectedFilePath3 = "/U/0/${date.format(dateFormatter)}/ACT/ASAMPL2.BPB"
 
         val expectedMetSamples = listOf(1.0f, 2.0f, 3.0f)
         val expectedStepSamples = listOf(1, 2, 3)
@@ -699,8 +699,8 @@ class PolarActivityUtilsTest {
 
         // Arrange
         val client = mockk<BlePsFtpClient>()
-        val date = Date()
-        val expectedPath = "/U/0/${dateFormat.format(date)}/ACT/"
+        val date = LocalDate.now()
+        val expectedPath = "/U/0/${date.format(dateFormatter)}/ACT/"
         val expectedError = Throwable("File not found")
 
         every { client.request(any()) } returns Single.error(expectedError)
