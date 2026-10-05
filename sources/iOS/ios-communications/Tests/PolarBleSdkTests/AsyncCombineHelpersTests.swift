@@ -213,4 +213,22 @@ final class AsyncCombineHelpersTests: XCTestCase {
             XCTAssertEqual(error as? TestError, .expected)
         }
     }
+
+    // Scenario 8: a Combine cancel on asyncPublisher must cancel the backing Task
+    func test_asyncPublisher_cancel_cancelsBackingTask() async {
+        let observedCancellation = expectation(description: "operation observed Task cancellation")
+        let publisher = asyncPublisher { () async throws -> Int in
+            do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch {
+                if Task.isCancelled { observedCancellation.fulfill() }
+                throw error
+            }
+            return 1
+        }
+        let cancellable = publisher.sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let start = Date()
+        cancellable.cancel()
+        await fulfillment(of: [observedCancellation], timeout: 5)
+        print("CANCEL_RETURN asyncPublisher elapsed=\(String(format: "%.3f", Date().timeIntervalSince(start)))s")
+    }
 }
