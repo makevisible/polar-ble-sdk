@@ -1,6 +1,6 @@
 # PFTP cancellation: 6.13.x vs 8.x-visible
 
-Why it matters: when the band disconnects, the app cancels in-flight PFTP operations (file sync, sleep data, firmware) so they fail fast instead of hanging for the 90 s protocol timeout (900 s for sleep archives). Upstream 8.0 deleted the machinery that made this work. The fork restored it in `8.0.1-visible`; the "Status at 8.3.0" section below says which parts upstream has since taken over.
+Why it matters: when the band disconnects, the app cancels in-flight PFTP operations (file sync, sleep data, firmware) so they fail fast instead of hanging for the 90 s protocol timeout (900 s for sleep archives). Upstream 8.0 deleted the machinery that made this work. The fork restored it in `8.0.1-visible`; the status sections below say which parts upstream has since taken over.
 
 ## How it worked on 6.13.x (Rx)
 
@@ -41,6 +41,10 @@ Why it matters: when the band disconnects, the app cancels in-flight PFTP operat
 - Android: upstream 8.3.0 added its own disconnect fast-fail (a `disconnectSignal` deferred raced against every channel wait via `select`, completed exceptionally by `reset()`), so the fork's polling `receiveOrNullFailingFastOnDisconnect` is gone. The fork still wraps `waitNotificationEnabled` in `runInterruptible` on top of upstream's new 30 s timeout, so consumer cancellation keeps interrupting that wait.
 - iOS: upstream 8.3.0 replaced the single-consumer `waitNotification` operation with a fan-out broadcast loop whose per-subscriber `onTermination` unsubscribes, which supersedes the fork's `onTermination` fix there. The fork keeps `withTaskCancellationHandler` + `ContinuationOnce` on `request`, `query`, `sendNotification` and `waitPsFtpReady`, `onTermination` on `write`, and the cancelable `transmitNotificationPacket`.
 - Tests: the fork's `BlePsFtpClientTest` cases on both platforms live next to upstream's; both sets pass at 8.3.0-visible.
+
+## Status at 8.4.0-visible
+
+- Upstream 8.4.0 is a docs-and-tests release for the code the fork touches: the only source edits in fork-patched files are a `serializedBytes` → `serializedData` rename in `BlePsFtpClient.swift` and the Android `search()` flow rewritten from `callbackFlow`/`awaitClose` to `flow`/`try-finally` in `BDDeviceListenerImpl.kt` (the fork's log line moved into the `finally`). Every fork patch above carries over unchanged.
 
 ## Where
 

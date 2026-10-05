@@ -1,6 +1,6 @@
 # Polar SDK 8.0 migration spec (Visible app plugin)
 
-Working spec for porting the Visible app's `bluetooth_foreground_service` plugin (makevisible/visible-app) from this fork's `6.13.2-visible` to the 8.x line. File paths below are in the app repository. The port shipped against `8.2.0-visible` and was bumped to `8.3.0-visible`; see [pftp-cancellation.md](pftp-cancellation.md) for the fork-side part.
+Working spec for porting the Visible app's `bluetooth_foreground_service` plugin (makevisible/visible-app) from this fork's `6.13.2-visible` to the 8.x line. File paths below are in the app repository. The port shipped against `8.2.0-visible` and was bumped to `8.3.0-visible`, then `8.4.0-visible`; see [pftp-cancellation.md](pftp-cancellation.md) for the fork-side part.
 
 Migration of `packages/bluetooth_foreground_service` from fork tag `6.13.2-visible` to `8.0.0-visible` (upstream 8.0.0 merged into the makevisible fork). Android: RxJava replaced by coroutines (suspend/Flow). iOS: RxSwift replaced by async/await, AsyncThrowingStream, Combine.
 
