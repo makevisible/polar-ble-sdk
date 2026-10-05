@@ -152,6 +152,9 @@ internal class BlePsFtpClientTest {
 
         assertTrue("cancellation should interrupt the blocking wait promptly, took ${elapsedMs}ms", elapsedMs < 5000)
         verify(exactly = 1) { mockGattTxInterface.gattClientResumeScanning() }
+    }
+
+    @Test
     fun `write propagates exception when device disconnects before response`() {
         // Arrange — MTU enabled, transmitMessage succeeds, but device is disconnected when
         // suspendReadResponse checks isConnected(), so BleDisconnected is thrown.

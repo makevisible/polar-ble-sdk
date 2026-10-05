@@ -71,6 +71,7 @@ class GattCallbackTest {
             override fun w(tag: String, msg: String) { warnings += msg }
             override fun i(tag: String, msg: String) = Unit
             override fun d_hex(tag: String, msg: String, data: ByteArray) = Unit
+            override fun e_hex(tag: String, msg: String, data: ByteArray) = Unit
         })
 
         try {
