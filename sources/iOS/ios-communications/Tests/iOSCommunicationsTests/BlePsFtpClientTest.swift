@@ -750,4 +750,104 @@ class BlePsFtpClientTest: XCTestCase {
             XCTFail("New client request failed after recovery — device still stuck: \(error)")
         }
     }
+
+    // MARK: - Consumer-cancellation tests (fork verification: upstream 8.4.0 vs 8.4.0-visible)
+
+    private final class ResultBox: @unchecked Sendable { var result: Result<Void, Error>? }
+
+    /// Starts `body` in a Task, lets it reach its blocking wait, cancels the Task and measures how long
+    /// the caller takes to return. `cap` bounds the wait so a hang fails the test instead of the run.
+    private func measureReturnAfterCancel(_ name: String, cap: TimeInterval, _ body: @escaping @Sendable () async throws -> Void) async -> (elapsed: TimeInterval, returned: Bool) {
+        let task = Task<Void, Error> { try await body() }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let start = Date()
+        task.cancel()
+        let returned = expectation(description: "\(name) returned after cancel")
+        let box = ResultBox()
+        Task { box.result = await task.result; returned.fulfill() }
+        await fulfillment(of: [returned], timeout: cap)
+        let elapsed = Date().timeIntervalSince(start)
+        print("CANCEL_RETURN \(name) elapsed=\(String(format: "%.3f", elapsed))s returned=\(box.result != nil) result=\(String(describing: box.result))")
+        return (elapsed, box.result != nil)
+    }
+
+    // Scenario 1: request() cancelled while blocked in readResponse (writes acked, device never answers)
+    func testCancel_requestBlockedOnResponse_returnsWithin5s() async {
+        let transmitter = ResponseInjectingTransmitter()
+        let client = BlePsFtpClient(gattServiceTransmitter: transmitter)
+        defer { client.disconnected() }
+        let r = await measureReturnAfterCancel("request", cap: 100) { _ = try await client.request(Data([0x00])) }
+        XCTAssertTrue(r.returned && r.elapsed < 5, "request() took \(r.elapsed)s to return after cancel (returned=\(r.returned))")
+    }
+
+    // Scenario 2: query() cancelled while blocked in readResponse
+    func testCancel_queryBlockedOnResponse_returnsWithin5s() async {
+        let transmitter = ResponseInjectingTransmitter()
+        let client = BlePsFtpClient(gattServiceTransmitter: transmitter)
+        defer { client.disconnected() }
+        let r = await measureReturnAfterCancel("query", cap: 100) { _ = try await client.query(1, parameters: nil) }
+        XCTAssertTrue(r.returned && r.elapsed < 5, "query() took \(r.elapsed)s to return after cancel (returned=\(r.returned))")
+    }
+
+    // Scenario 3: sendNotification() cancelled while blocked waiting for the H2D write ack (never acked)
+    func testCancel_sendNotificationBlockedOnWriteAck_returnsWithin5s() async {
+        let transmitter = ResponseInjectingTransmitter() // ignores non-MTU characteristics: H2D write never acked
+        let client = BlePsFtpClient(gattServiceTransmitter: transmitter)
+        defer { client.disconnected() }
+        let r = await measureReturnAfterCancel("sendNotification", cap: 100) { try await client.sendNotification(1, parameters: nil) }
+        XCTAssertTrue(r.returned && r.elapsed < 5, "sendNotification() took \(r.elapsed)s to return after cancel (returned=\(r.returned))")
+    }
+
+    // Scenario 4: write() stream consumer cancelled while the operation is blocked in readResponse.
+    // The consumer's own return is cheap (AsyncThrowingStream iteration is cancellation-aware); what matters is
+    // whether the BlockOperation ends, since the serial mtuOperationQueue blocks every later request() until it does.
+    func testCancel_writeStreamConsumer_freesMtuQueueWithin5s() async {
+        let transmitter = ResponseInjectingTransmitter()
+        let client = BlePsFtpClient(gattServiceTransmitter: transmitter)
+        defer { client.disconnected() }
+        let r = await measureReturnAfterCancel("write-consumer", cap: 100) {
+            for try await _ in client.write(NSData(data: Data([0x00])), data: InputStream(data: Data(repeating: 0xAB, count: 16))) {}
+        }
+        let start = Date()
+        while client.isBusy() && Date().timeIntervalSince(start) < 100 { try? await Task.sleep(nanoseconds: 50_000_000) }
+        let queueFreedAfter = r.elapsed + Date().timeIntervalSince(start)
+        print("CANCEL_RETURN write-queue elapsed=\(String(format: "%.3f", queueFreedAfter))s stillBusy=\(client.isBusy())")
+        XCTAssertFalse(client.isBusy(), "write BlockOperation still running after consumer cancel")
+        XCTAssertLessThan(queueFreedAfter, 5, "mtu queue stayed busy \(queueFreedAfter)s after consumer cancel")
+    }
+
+    // Scenario 5: waitPsFtpReady() cancelled while notifications are never enabled (no timeout exists on this path)
+    func testCancel_waitPsFtpReadyNeverReady_returnsWithin5s() async {
+        let client = blePsFtpClient!
+        let r = await measureReturnAfterCancel("waitPsFtpReady", cap: 30) { try await client.waitPsFtpReady(true) }
+        XCTAssertTrue(r.returned && r.elapsed < 5, "waitPsFtpReady() took \(r.elapsed)s to return after cancel (returned=\(r.returned))")
+    }
+    // GIVEN a first waitNotification() consumer that is cancelled while nothing ever arrives
+    // WHEN a second waitNotification() call is made afterwards
+    // THEN the second call still receives notifications promptly — the cancelled first
+    // operation must not zombie-block the serial waitNotificationOperationQueue behind it
+    func testWaitNotificationCancellationDoesNotStarveNextCall() async throws {
+        // Arrange: first consumer starts waiting, nothing ever arrives for it
+        let firstTask = Task<Void, Error> {
+            for try await _ in blePsFtpClient.waitNotification() { }
+        }
+        try await Task.sleep(nanoseconds: 200_000_000) // let it actually enter the blocking wait
+        firstTask.cancel()
+        _ = try? await firstTask.value
+        try await Task.sleep(nanoseconds: 200_000_000) // let cancellation actually free the queue
+
+        let psftpNotifcationId = Data([0x01])
+        let psftpNotificationParams = Data([0xFF, 0x00])
+        var notificationFromDevice = Data([0x02]) // rfc76 header: single frame
+        notificationFromDevice.append(psftpNotifcationId)
+        notificationFromDevice.append(psftpNotificationParams)
+        let characteristic: CBUUID = BlePsFtpClient.PSFTP_D2H_NOTIFICATION_CHARACTERISTIC
+
+        // Act: a fresh call must not be stuck behind the cancelled first operation
+        blePsFtpClient.processServiceData(characteristic, data: notificationFromDevice, err: 0)
+        let event = try await firstNotification(from: blePsFtpClient.waitNotification(), timeout: 3.0)
+
+        // Assert
+        XCTAssertEqual(Int32(psftpNotifcationId[0]), event?.id)
+    }
 }

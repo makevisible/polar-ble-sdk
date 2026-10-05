@@ -9,6 +9,13 @@ import com.polar.androidcommunications.testrules.BleLoggerTestRule
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.system.measureTimeMillis
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.*
@@ -206,5 +213,60 @@ internal class BlePsFtpClientTest {
         thread.join(5000)
         Assert.assertFalse("request() should have returned after reset()", thread.isAlive)
         Assert.assertNotNull("request() should have thrown after reset()", result.get()?.exceptionOrNull())
+    }
+
+    // Scenario 6: waitNotificationEnabled cancelled while the notification is never enabled.
+    // No descriptorWritten(): the MTU state stays -1, so the wait ends only via cancellation or the 30 s timeout.
+    @Test
+    fun `waitNotificationEnabled cancellation unblocks caller while notification is never enabled`() = runBlocking {
+        val job = CoroutineScope(Dispatchers.Default).launch {
+            blePsFtpClient.waitNotificationEnabled(RFC77_PFTP_MTU_CHARACTERISTIC, false, 30_000L)
+        }
+        delay(200)
+        val start = System.currentTimeMillis()
+        job.cancel()
+        val joined = withTimeoutOrNull(40_000) { job.join(); true } ?: false
+        val elapsedMs = System.currentTimeMillis() - start
+        println("CANCEL_RETURN waitNotificationEnabled elapsedMs=$elapsedMs joined=$joined")
+        assertTrue("waitNotificationEnabled should unblock promptly on cancel, took ${elapsedMs}ms (joined=$joined)", joined && elapsedMs < 5000)
+    }
+
+    // Scenario 6b: the same path through the app's actual entry point
+    @Test
+    fun `waitPsFtpClientReady cancellation unblocks caller while notifications are never enabled`() = runBlocking {
+        val job = CoroutineScope(Dispatchers.Default).launch {
+            blePsFtpClient.waitPsFtpClientReady(true)
+        }
+        delay(200)
+        val start = System.currentTimeMillis()
+        job.cancel()
+        val joined = withTimeoutOrNull(40_000) { job.join(); true } ?: false
+        val elapsedMs = System.currentTimeMillis() - start
+        println("CANCEL_RETURN waitPsFtpClientReady elapsedMs=$elapsedMs joined=$joined")
+        assertTrue("waitPsFtpClientReady should unblock promptly on cancel, took ${elapsedMs}ms (joined=$joined)", joined && elapsedMs < 5000)
+    }
+
+    @Test
+    fun `test psftp client request cancellation interrupts blocking wait and unblocks caller`() = runBlocking {
+        // Arrange: local ATT writes succeed immediately, but the device never sends a response,
+        // so request() blocks forever in readResponse() unless cancellation interrupts it.
+        every { mockGattTxInterface.transmitMessages(any(), any(), any(), any()) } answers {
+            blePsFtpClient.processServiceDataWritten(RFC77_PFTP_MTU_CHARACTERISTIC, 0)
+        }
+        every { mockGattTxInterface.gattClientRequestStopScanning() } returns Unit
+        every { mockGattTxInterface.gattClientResumeScanning() } returns Unit
+
+        blePsFtpClient.descriptorWritten(RFC77_PFTP_MTU_CHARACTERISTIC, true, BleGattBase.ATT_SUCCESS)
+
+        val job = launch(Dispatchers.Default) {
+            blePsFtpClient.request(byteArrayOf(0x01))
+        }
+        // give request() time to actually reach the blocking readResponse() wait
+        delay(200)
+
+        val elapsedMs = measureTimeMillis { job.cancelAndJoin() }
+
+        assertTrue("cancellation should interrupt the blocking wait promptly, took ${elapsedMs}ms", elapsedMs < 5000)
+        verify(exactly = 1) { mockGattTxInterface.gattClientResumeScanning() }
     }
 }
