@@ -1,7 +1,10 @@
 jdk:
-  - openjdk21
+  - openjdk17
 
 before_install:
   - find . -mindepth 1 -maxdepth 1 -not \( -name sources -o -name .git \) -exec rm -rf '{}' \;
   - cp -r sources/Android/android-communications/* .
   - rm -rf sources
+
+install:
+  - source "$HOME/.sdkman/bin/sdkman-init.sh" && sdk install gradle 8.12 < /dev/null && sdk use gradle 8.12 && gradle -Pgroup=$GROUP -Pversion=$VERSION publishToMavenLocal --console=plain
