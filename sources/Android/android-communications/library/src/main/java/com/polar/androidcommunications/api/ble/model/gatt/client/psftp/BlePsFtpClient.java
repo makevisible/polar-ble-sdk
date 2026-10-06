@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,7 +45,7 @@ public class BlePsFtpClient extends BleGattBase {
     private final AtomicInteger pftpMtuEnabled;
     private final AtomicInteger pftpD2HNotificationEnabled;
     private final LinkedBlockingQueue<Pair<byte[], Integer>> mtuInputQueue = new LinkedBlockingQueue<>();
-    private final LinkedBlockingQueue<Pair<byte[], Integer>> notificationInputQueue = new LinkedBlockingQueue<>();
+    private final LinkedBlockingDeque<Pair<byte[], Integer>> notificationInputQueue = new LinkedBlockingDeque<>();
     private final AtomicInteger packetsWritten = new AtomicInteger(0);
     private final AtomicInteger packetsWrittenWithResponse = new AtomicInteger(0);
     private final AtomicBoolean mtuWaiting = new AtomicBoolean(false);
@@ -54,6 +55,7 @@ public class BlePsFtpClient extends BleGattBase {
     private final AtomicInteger packetsCount = new AtomicInteger(5); // default every 5th packet is written with response
     private static final int PROTOCOL_TIMEOUT_SECONDS = 90;
     private static final int PROTOCOL_TIMEOUT_EXTENDED_SECONDS = 900;
+    private static final long NOTIFICATION_CANCEL_CHECK_MILLIS = 250;
 
     private final List<String> extendedWriteTimeoutFilePaths = Collections.singletonList("/SYNCPART.TGZ");
 
@@ -628,38 +630,25 @@ public class BlePsFtpClient extends BleGattBase {
         return Flowable.create((FlowableOnSubscribe<BlePsFtpUtils.PftpNotificationMessage>) subscriber -> {
                     // NOTE no flush as client may be interested in buffered notifications
                     // notificationInputQueue.clear();
+                    // The pump stops as soon as its subscriber is cancelled. It must not depend on the
+                    // dispose interrupt: when the caller's result handling clears the interrupt flag on
+                    // this thread, a pump blocked in an untimed wait outlives its subscriber, keeps
+                    // pftpWaitNotificationMutex and swallows every later notification.
                     synchronized (pftpWaitNotificationMutex) {
-                        do {
-                            if (pftpD2HNotificationEnabled.get() == ATT_SUCCESS) {
-                                try {
-                                    synchronized (notificationInputQueue) {
-                                        if (notificationInputQueue.isEmpty()) {
-                                            notificationInputQueue.wait();
-                                        }
-                                    }
-                                } catch (InterruptedException ex) {
-                                    boolean cancelled = subscriber.isCancelled();
-                                    if (cancelled) {
-                                        BleLogger.d(TAG, "Wait notification interrupted due to stream cancellation");
-                                    } else {
-                                        BleLogger.e(TAG, "Wait notification interrupted");
-                                    }
-                                    Thread.currentThread().interrupt();
-                                    if (!cancelled) {
-                                        InterruptedException interrupted = new InterruptedException("Wait notification interrupted");
-                                        interrupted.initCause(ex);
-                                        subscriber.tryOnError(interrupted);
-                                    }
-                                    return;
-                                }
-                            } else {
-                                if (!subscriber.isCancelled()) {
-                                    subscriber.tryOnError(new BleCharacteristicNotificationNotEnabled("PS-FTP d2h notification not enabled"));
-                                }
+                        while (!subscriber.isCancelled()) {
+                            if (pftpD2HNotificationEnabled.get() != ATT_SUCCESS) {
+                                subscriber.tryOnError(new BleCharacteristicNotificationNotEnabled("PS-FTP d2h notification not enabled"));
                                 return;
                             }
                             try {
-                                Pair<byte[], Integer> packet = notificationInputQueue.take();
+                                Pair<byte[], Integer> packet = notificationInputQueue.poll(NOTIFICATION_CANCEL_CHECK_MILLIS, TimeUnit.MILLISECONDS);
+                                if (packet == null) {
+                                    continue;
+                                }
+                                if (subscriber.isCancelled()) {
+                                    notificationInputQueue.offerFirst(packet);
+                                    return;
+                                }
                                 if (packet.second == 0) {
                                     BlePsFtpUtils.PftpRfc76ResponseHeader response = BlePsFtpUtils.processRfc76MessageFrameHeader(packet.first);
                                     if (response.next == 0) {
@@ -714,7 +703,7 @@ public class BlePsFtpClient extends BleGattBase {
                                 }
                                 return;
                             }
-                        } while (true);
+                        }
                     }
                 }, BackpressureStrategy.BUFFER)
                 .onBackpressureBuffer(100, () -> BleLogger.w(TAG, "notifications buffer full"), BackpressureOverflowStrategy.DROP_OLDEST)

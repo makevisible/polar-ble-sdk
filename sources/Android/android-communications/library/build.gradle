@@ -12,7 +12,7 @@ import java.util.regex.Pattern
 def getVersion = { ->
     def stdout = new ByteArrayOutputStream()
     exec {
-        commandLine 'git', 'describe', '--tags'
+        commandLine 'git', 'describe', '--tags', '--always'
         standardOutput = stdout
     }
     def pattern = Pattern.compile("^([0-9]*)(\\.)([0-9]*)(\\.)([0-9]*)")
