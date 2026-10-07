@@ -3474,7 +3474,7 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
 
     override fun observeSleepRecordingStatus(identifier: String): Flowable<Array<PolarSleepRecordingStatus>> = Flowable.defer {
         BleLogger.d(TAG, "observeSleepRecordingStatus: called for identifier: $identifier")
-        val session = sessionPsFtpClientReady(identifier)
+        val session = PolarServiceClientUtils.sessionPsFtpClientReady(identifier, listener)
         if (!BlePolarDeviceCapabilitiesUtility.isActivityDataSupported(session.polarDeviceType)) {
             throw PolarServiceNotAvailable()
         }
