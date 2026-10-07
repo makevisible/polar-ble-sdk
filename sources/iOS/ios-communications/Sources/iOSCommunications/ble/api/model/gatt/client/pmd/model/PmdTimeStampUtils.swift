@@ -10,7 +10,12 @@ internal class PmdTimeStampUtils {
             throw BleGattException.gattDataError(description: "Timestamp calculation error, sample size is zero")
         }
         
-        let timeStampDelta = try getTimeStampDelta(previousFrameTimeStamp, frameTimeStamp, samplesSize, sampleRate)
+        // A device clock correction can place a frame behind its predecessor. The frame is then
+        // spaced at the nominal sample rate and anchored on frameTimeStamp, as the first frame of
+        // a recording is.
+        let hasUsablePreviousFrame = previousFrameTimeStamp > 0 && previousFrameTimeStamp < frameTimeStamp
+
+        let timeStampDelta = try getTimeStampDelta(previousFrameTimeStamp, frameTimeStamp, samplesSize, sampleRate, hasUsablePreviousFrame)
 
         // guard
         guard (Double(frameTimeStamp) >= timeStampDelta * Double(samplesSize)) else {
@@ -18,10 +23,10 @@ internal class PmdTimeStampUtils {
         }
 
         let startTimeStamp:Double
-        if (previousFrameTimeStamp <= 0) {
-            startTimeStamp = try firstSampleTimeFromSampleRate(frameTimeStamp, timeStampDelta, samplesSize)
-        } else {
+        if (hasUsablePreviousFrame) {
             startTimeStamp = firstSampleTimeFromTimeStamps(previousFrameTimeStamp, timeStampDelta)
+        } else {
+            startTimeStamp = try firstSampleTimeFromSampleRate(frameTimeStamp, timeStampDelta, samplesSize)
         }
 
         var timeStampList = [UInt64]()
@@ -32,21 +37,17 @@ internal class PmdTimeStampUtils {
         return timeStampList
     }
     
-    static func getTimeStampDelta(_ previousFrameTimeStamp: UInt64, _ timeStamp: UInt64, _ samplesSize: UInt, _ sampleRate: UInt) throws -> Double {
+    static func getTimeStampDelta(_ previousFrameTimeStamp: UInt64, _ timeStamp: UInt64, _ samplesSize: UInt, _ sampleRate: UInt, _ hasUsablePreviousFrame: Bool) throws -> Double {
         
-        guard previousFrameTimeStamp > 0 || sampleRate > 0 else {
-            throw BleGattException.gattDataError(description: "Timestamp delta cannot be calculated for the frame, because previousTimeStamp \(previousFrameTimeStamp) and sampleRate \(sampleRate)")
+        guard hasUsablePreviousFrame || sampleRate > 0 else {
+            throw BleGattException.gattDataError(description: "Timestamp delta cannot be calculated for the frame, because previousTimeStamp \(previousFrameTimeStamp) timestamp \(timeStamp) and sampleRate \(sampleRate)")
         }
-
-        if (previousFrameTimeStamp <= 0 || previousFrameTimeStamp >= timeStamp) {
+        
+        if (hasUsablePreviousFrame) {
+            return try deltaFromTimeStamps(previousFrameTimeStamp, timeStamp, samplesSize)
+        } else {
             return deltaFromSamplingRate(sampleRate)
         }
-
-        guard timeStamp > previousFrameTimeStamp else {
-            throw BleGattException.gattDataError(description: "Timestamp delta cannot be calculated for the frame, because previousTimeStamp \(previousFrameTimeStamp) is bigger than timestamp \(timeStamp)")
-        }
-        
-        return try deltaFromTimeStamps(previousFrameTimeStamp, timeStamp, samplesSize)
     }
     
     internal static func deltaFromSamplingRate(_ samplingRate: UInt) -> Double {
@@ -54,12 +55,11 @@ internal class PmdTimeStampUtils {
     }
     
     internal static func deltaFromTimeStamps(_ previousTimeStamp: UInt64, _ timeStamp: UInt64, _ samples: UInt) throws -> Double {
-        let timeInBetween = timeStamp - previousTimeStamp
-        if (timeInBetween > 0) {
-            return Double(timeInBetween) / Double(samples)
-        } else {
+        // Compared before subtracting: UInt64 subtraction traps on underflow.
+        guard timeStamp > previousTimeStamp else {
             throw BleGattException.gattDataError(description: "Failed to decide delta from when previous timestamp: \(previousTimeStamp) timestamp: \(timeStamp)")
         }
+        return Double(timeStamp - previousTimeStamp) / Double(samples)
     }
     
     private static func firstSampleTimeFromSampleRate(_ lastSampleTimeStamp: UInt64, _ timeStampDelta: Double, _ samplesSize: UInt) throws -> Double {

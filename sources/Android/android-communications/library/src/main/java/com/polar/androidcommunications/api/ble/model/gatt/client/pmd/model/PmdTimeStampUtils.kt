@@ -14,17 +14,22 @@ internal object PmdTimeStampUtils {
             throw SampleSizeMissingError
         }
 
-        val timeStampDelta = getTimeStampDelta(previousFrameTimeStamp, frameTimeStamp, samplesSize, sampleRate)
+        // A device clock correction can place a frame behind its predecessor. The ULong subtraction
+        // in deltaFromTimeStamps wraps rather than going negative, so the frame is spaced at the
+        // nominal sample rate and anchored on frameTimeStamp, as the first frame of a recording is.
+        val hasUsablePreviousFrame = previousFrameTimeStamp != 0uL && previousFrameTimeStamp < frameTimeStamp
+
+        val timeStampDelta = getTimeStampDelta(previousFrameTimeStamp, frameTimeStamp, samplesSize, sampleRate, hasUsablePreviousFrame)
 
         // guard
         if (frameTimeStamp.toDouble() < (timeStampDelta * samplesSize.toDouble())) {
             throw NegativeTimeStampError("Sample time stamp calculation fails. The timestamps are negative, since frameTimeStamp $frameTimeStamp minus ${timeStampDelta * samplesSize} is negative")
         }
 
-        val startTimeStamp = if (previousFrameTimeStamp == 0uL) {
-            firstSampleTimeFromSampleRate(frameTimeStamp, timeStampDelta, samplesSize)
-        } else {
+        val startTimeStamp = if (hasUsablePreviousFrame) {
             firstSampleTimeFromTimeStamps(previousFrameTimeStamp, timeStampDelta)
+        } else {
+            firstSampleTimeFromSampleRate(frameTimeStamp, timeStampDelta, samplesSize)
         }
 
         val timeStampList = MutableList(size = samplesSize - 1, init = { index ->
@@ -34,16 +39,16 @@ internal object PmdTimeStampUtils {
         return timeStampList
     }
 
-    private fun getTimeStampDelta(previousFrameTimeStamp: ULong, timeStamp: ULong, samplesSize: Int, sampleRate: Int): Double {
+    private fun getTimeStampDelta(previousFrameTimeStamp: ULong, timeStamp: ULong, samplesSize: Int, sampleRate: Int, hasUsablePreviousFrame: Boolean): Double {
         // guard
-        if (previousFrameTimeStamp == 0uL && sampleRate <= 0) {
-            throw TimeStampAndFrequencyZeroError("Timestamp delta cannot be calculated for the frame, because previousTimeStamp $previousFrameTimeStamp and sampleRate $sampleRate")
+        if (!hasUsablePreviousFrame && sampleRate <= 0) {
+            throw TimeStampAndFrequencyZeroError("Timestamp delta cannot be calculated for the frame, because previousTimeStamp $previousFrameTimeStamp timestamp $timeStamp and sampleRate $sampleRate")
         }
 
-        val delta = if (previousFrameTimeStamp == 0uL) {
-            deltaFromSamplingRate(sampleRate)
-        } else {
+        val delta = if (hasUsablePreviousFrame) {
             deltaFromTimeStamps(previousFrameTimeStamp, timeStamp, samplesSize)
+        } else {
+            deltaFromSamplingRate(sampleRate)
         }
         return delta
     }
@@ -54,12 +59,11 @@ internal object PmdTimeStampUtils {
     }
 
     fun deltaFromTimeStamps(previousTimeStamp: ULong, timeStamp: ULong, samples: Int): Double {
-        val timeInBetween = timeStamp - previousTimeStamp
-        return if (timeInBetween > 0u) {
-            timeInBetween.toDouble() / samples.toDouble()
-        } else {
+        // Compared before subtracting: ULong arithmetic wraps instead of going negative.
+        if (timeStamp <= previousTimeStamp) {
             throw NegativeTimeStampError("Failed to decide delta from when previous timestamp: $previousTimeStamp timestamp: $timeStamp")
         }
+        return (timeStamp - previousTimeStamp).toDouble() / samples.toDouble()
     }
 
     private fun firstSampleTimeFromTimeStamps(previousTimeStamp: ULong, timeStampDelta: Double): Double {

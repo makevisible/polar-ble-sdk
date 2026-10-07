@@ -27,6 +27,10 @@ class BleLoggerTestRule : TestRule {
         override fun d_hex(tag: String, msg: String, data: ByteArray) {
             println("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
         }
+
+        override fun e_hex(tag: String, msg: String, data: ByteArray) {
+            println("$tag/$msg hex: ${data.joinToString(" ") { "%02x".format(it) }}")
+        }
     }
 
     override fun apply(base: Statement, description: Description?): Statement {
