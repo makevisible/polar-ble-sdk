@@ -108,6 +108,22 @@ public class PolarUserDeviceSettings {
         public var telemetryEnabled: Bool? = nil
         public var minimumTrainingDurationSeconds: UInt32? = nil
         public var autosFilesEnabled: Bool? = nil
+
+        public init(deviceLocation: DeviceLocation = .UNDEFINED,
+                    usbConnectionMode: UsbConnectionMode? = nil,
+                    automaticTrainingDetectionMode: AutomaticTrainingDetectionMode? = nil,
+                    automaticTrainingDetectionSensitivity: UInt32? = nil,
+                    telemetryEnabled: Bool? = nil,
+                    minimumTrainingDurationSeconds: UInt32? = nil,
+                    autosFilesEnabled: Bool? = nil) {
+            self.deviceLocation = deviceLocation
+            self.usbConnectionMode = usbConnectionMode
+            self.automaticTrainingDetectionMode = automaticTrainingDetectionMode
+            self.automaticTrainingDetectionSensitivity = automaticTrainingDetectionSensitivity
+            self.telemetryEnabled = telemetryEnabled
+            self.minimumTrainingDurationSeconds = minimumTrainingDurationSeconds
+            self.autosFilesEnabled = autosFilesEnabled
+        }
     }
 
     static func toProto(userDeviceSettings: PolarUserDeviceSettings) -> Data_PbUserDeviceSettings {

@@ -64,4 +64,46 @@ public struct PolarNightlyRechargeData: Encodable {
 
     // Date for which the sleep result and nightly recovery result is for
     public let sleepResultDate: DateComponents?
+
+    public init(createdTimestamp: Date,
+                modifiedTimestamp: Date?,
+                ansStatus: Float?,
+                recoveryIndicator: Int?,
+                recoveryIndicatorSubLevel: Int?,
+                ansRate: Int?,
+                scoreRateObsolete: Int?,
+                meanNightlyRecoveryRRI: Int?,
+                meanNightlyRecoveryRMSSD: Int?,
+                meanNightlyRecoveryRespirationInterval: Int?,
+                meanBaselineRRI: Int?,
+                sdBaselineRRI: Int?,
+                meanBaselineRMSSD: Int?,
+                sdBaselineRMSSD: Int?,
+                meanBaselineRespirationInterval: Int?,
+                sdBaselineRespirationInterval: Int?,
+                sleepTip: String?,
+                vitalityTip: String?,
+                exerciseTip: String?,
+                sleepResultDate: DateComponents?) {
+        self.createdTimestamp = createdTimestamp
+        self.modifiedTimestamp = modifiedTimestamp
+        self.ansStatus = ansStatus
+        self.recoveryIndicator = recoveryIndicator
+        self.recoveryIndicatorSubLevel = recoveryIndicatorSubLevel
+        self.ansRate = ansRate
+        self.scoreRateObsolete = scoreRateObsolete
+        self.meanNightlyRecoveryRRI = meanNightlyRecoveryRRI
+        self.meanNightlyRecoveryRMSSD = meanNightlyRecoveryRMSSD
+        self.meanNightlyRecoveryRespirationInterval = meanNightlyRecoveryRespirationInterval
+        self.meanBaselineRRI = meanBaselineRRI
+        self.sdBaselineRRI = sdBaselineRRI
+        self.meanBaselineRMSSD = meanBaselineRMSSD
+        self.sdBaselineRMSSD = sdBaselineRMSSD
+        self.meanBaselineRespirationInterval = meanBaselineRespirationInterval
+        self.sdBaselineRespirationInterval = sdBaselineRespirationInterval
+        self.sleepTip = sleepTip
+        self.vitalityTip = vitalityTip
+        self.exerciseTip = exerciseTip
+        self.sleepResultDate = sleepResultDate
+    }
 }
