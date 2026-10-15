@@ -5,6 +5,11 @@ import Foundation
 public struct PolarCaloriesData: Codable {
     public let date: Date
     public let calories: Int
+
+    public init(date: Date, calories: Int) {
+        self.date = date
+        self.calories = calories
+    }
 }
 
 public enum CaloriesType: CaseIterable {

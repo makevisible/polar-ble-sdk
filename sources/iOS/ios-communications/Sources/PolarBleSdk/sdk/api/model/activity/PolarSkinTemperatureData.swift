@@ -45,6 +45,11 @@ public class PolarSkinTemperatureData {
     public struct PolarSkinTemperatureDataSample: Codable {
         public let recordingTimeDeltaMs: UInt64!
         public let temperature: Float!
+
+        public init(recordingTimeDeltaMs: UInt64!, temperature: Float!) {
+            self.recordingTimeDeltaMs = recordingTimeDeltaMs
+            self.temperature = temperature
+        }
     }
 
     public struct PolarSkinTemperatureResult: Codable {
@@ -52,6 +57,16 @@ public class PolarSkinTemperatureData {
         public let sensorLocation: SkinTemperatureSensorLocation!
         public let measurementType: SkinTemperatureMeasurementType!
         public let skinTemperatureList: [PolarSkinTemperatureDataSample]?
+
+        public init(date: Date!,
+                    sensorLocation: SkinTemperatureSensorLocation!,
+                    measurementType: SkinTemperatureMeasurementType!,
+                    skinTemperatureList: [PolarSkinTemperatureDataSample]?) {
+            self.date = date
+            self.sensorLocation = sensorLocation
+            self.measurementType = measurementType
+            self.skinTemperatureList = skinTemperatureList
+        }
     }
 
     static func fromPbTemperatureMeasurementSamples(pbTemperatureMeasurementData: [Data_TemperatureMeasurementSample]) -> [PolarSkinTemperatureDataSample] {

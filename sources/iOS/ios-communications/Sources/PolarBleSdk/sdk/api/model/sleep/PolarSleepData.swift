@@ -60,16 +60,60 @@ public class PolarSleepData {
         public let sleepResultDate: DateComponents?
         public let originalSleepRange: OriginalSleepRange?
         public var sleepSkinTemperatureResult: SleepSkinTemperatureResult?
+
+        public init(sleepStartTime: Date!,
+                    sleepEndTime: Date!,
+                    lastModified: Date!,
+                    sleepGoalMinutes: UInt32!,
+                    sleepWakePhases: [SleepWakePhase]!,
+                    snoozeTime: [Date]?,
+                    alarmTime: Date?,
+                    sleepStartOffsetSeconds: Int32!,
+                    sleepEndOffsetSeconds: Int32!,
+                    userSleepRating: SleepRating?,
+                    deviceId: String?,
+                    batteryRanOut: Bool?,
+                    sleepCycles: [SleepCycle]!,
+                    sleepResultDate: DateComponents?,
+                    originalSleepRange: OriginalSleepRange?,
+                    sleepSkinTemperatureResult: SleepSkinTemperatureResult? = nil) {
+            self.sleepStartTime = sleepStartTime
+            self.sleepEndTime = sleepEndTime
+            self.lastModified = lastModified
+            self.sleepGoalMinutes = sleepGoalMinutes
+            self.sleepWakePhases = sleepWakePhases
+            self.snoozeTime = snoozeTime
+            self.alarmTime = alarmTime
+            self.sleepStartOffsetSeconds = sleepStartOffsetSeconds
+            self.sleepEndOffsetSeconds = sleepEndOffsetSeconds
+            self.userSleepRating = userSleepRating
+            self.deviceId = deviceId
+            self.batteryRanOut = batteryRanOut
+            self.sleepCycles = sleepCycles
+            self.sleepResultDate = sleepResultDate
+            self.originalSleepRange = originalSleepRange
+            self.sleepSkinTemperatureResult = sleepSkinTemperatureResult
+        }
     }
 
     public struct SleepWakePhase: Codable {
         public var secondsFromSleepStart: UInt32!
         public var state: SleepWakeState!
+
+        public init(secondsFromSleepStart: UInt32! = nil, state: SleepWakeState! = nil) {
+            self.secondsFromSleepStart = secondsFromSleepStart
+            self.state = state
+        }
     }
 
     public struct SleepCycle: Codable {
         public let secondsFromSleepStart: UInt32!
         public let sleepDepthStart: Float!
+
+        public init(secondsFromSleepStart: UInt32!, sleepDepthStart: Float!) {
+            self.secondsFromSleepStart = secondsFromSleepStart
+            self.sleepDepthStart = sleepDepthStart
+        }
     }
 
     public struct OriginalSleepRange: Codable {

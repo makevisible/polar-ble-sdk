@@ -6,4 +6,9 @@ import Foundation
 public struct PolarStepsData: Codable {
     public let date: Date
     public let steps: Int
+
+    public init(date: Date, steps: Int) {
+        self.date = date
+        self.steps = steps
+    }
 }
