@@ -15,6 +15,13 @@ public interface ConnectionInterface {
 
     boolean isPowered();
 
+    /**
+     * True when the OS still holds a GATT link to the device, e.g. one kept alive after the app
+     * process that opened it died. Such a device does not advertise, so it can only be reached
+     * by connecting to it directly.
+     */
+    boolean isConnectedAtOsLevel(BDDeviceSessionImpl session);
+
     boolean startServiceDiscovery(BDDeviceSessionImpl session);
 
     boolean setMtu(BDDeviceSessionImpl session);
