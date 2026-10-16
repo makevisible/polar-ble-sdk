@@ -55,6 +55,7 @@ internal class ConnectionHandlerTest {
             true
         }
         every { mockConnectionInterface.isPowered } returns true
+        every { mockConnectionInterface.isConnectedAtOsLevel(any()) } returns false
 
         every { mockDeviceSession.sessionState } returns BleDeviceSession.DeviceSessionState.SESSION_CLOSED
         every { mockDeviceSession.isConnectableAdvertisement } returns true
@@ -79,6 +80,38 @@ internal class ConnectionHandlerTest {
         assertEquals(BleDeviceSession.DeviceSessionState.SESSION_OPEN, capturedSessionStates[1])
 
         assertEquals(ConnectionHandler.ConnectionHandlerState.FREE, connectionHandler.state)
+    }
+
+    @Test
+    fun `connect to device without advertisement when the OS still holds its link`() {
+        // Arrange
+        val capturedSessionStates = mutableListOf<BleDeviceSession.DeviceSessionState>()
+        every { mockDeviceSession.sessionState = capture(capturedSessionStates) } returns Unit
+        every { mockDeviceSession.isConnectableAdvertisement } returns false
+        every { mockConnectionInterface.isConnectedAtOsLevel(mockDeviceSession) } returns true
+
+        // Act
+        connectionHandler.connectDevice(mockDeviceSession, true)
+
+        // Assert
+        verify(exactly = 1) { mockConnectionInterface.connectDevice(mockDeviceSession) }
+        assertEquals(BleDeviceSession.DeviceSessionState.SESSION_OPENING, capturedSessionStates[0])
+        assertEquals(BleDeviceSession.DeviceSessionState.SESSION_OPEN, capturedSessionStates[1])
+    }
+
+    @Test
+    fun `park device without advertisement when the OS holds no link`() {
+        // Arrange
+        val capturedSessionStates = mutableListOf<BleDeviceSession.DeviceSessionState>()
+        every { mockDeviceSession.sessionState = capture(capturedSessionStates) } returns Unit
+        every { mockDeviceSession.isConnectableAdvertisement } returns false
+
+        // Act
+        connectionHandler.connectDevice(mockDeviceSession, true)
+
+        // Assert
+        verify(exactly = 0) { mockConnectionInterface.connectDevice(any()) }
+        assertEquals(listOf(BleDeviceSession.DeviceSessionState.SESSION_OPEN_PARK), capturedSessionStates)
     }
 
     @Test

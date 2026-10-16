@@ -193,7 +193,10 @@ class ConnectionHandler(
                 when (session.sessionState) {
                     DeviceSessionState.SESSION_OPEN_PARK,
                     DeviceSessionState.SESSION_CLOSED -> {
-                        if (session.isConnectableAdvertisement && containsRequiredUuids(session)) {
+                        if (connectionInterface.isConnectedAtOsLevel(session)) {
+                            BleLogger.d(TAG, "Device is connected at OS level, connecting without advertisement")
+                            changeState(session, ConnectionHandlerState.CONNECTING)
+                        } else if (session.isConnectableAdvertisement && containsRequiredUuids(session)) {
                             changeState(session, ConnectionHandlerState.CONNECTING)
                         } else {
                             updateSessionState(session, DeviceSessionState.SESSION_OPEN_PARK)

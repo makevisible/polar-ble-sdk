@@ -828,7 +828,8 @@ class BDBleApiImpl private constructor(context: Context, features: Set<PolarBleS
                 openConnection(session)
             } else {
                 listener?.let {
-                    connectSubscriptions[identifier] = it.search(false)
+                    // Known devices first: a device whose link the OS still holds does not advertise.
+                    connectSubscriptions[identifier] = it.search(true)
                         .filter { bleDeviceSession: BleDeviceSession -> if (identifier.contains(":")) bleDeviceSession.address == identifier else bleDeviceSession.polarDeviceId == identifier }
                         .take(1)
                         .observeOn(Schedulers.io())

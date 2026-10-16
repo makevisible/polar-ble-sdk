@@ -122,6 +122,23 @@ public class BDDeviceListenerImpl extends BleDeviceListener {
         scanCallback.setOpportunistic(disable);
     }
 
+    /**
+     * Adds a session for a device the OS already knows (connected or bonded). It has no
+     * advertisement yet, so its name, and with it the Polar device id, comes from the OS.
+     */
+    @SuppressLint("MissingPermission")
+    private void addKnownDeviceSession(BluetoothDevice device) {
+        if (device.getType() == BluetoothDevice.DEVICE_TYPE_LE && sessions.getSession(device) == null) {
+            BDDeviceSessionImpl newDevice = new BDDeviceSessionImpl(context, device, scanCallback, bondingManager, factory);
+            String name = device.getName();
+            if (name != null) {
+                newDevice.getAdvertisementContent().setAdvertisementDeviceNamePrefix(advertisingDeviceNamePrefix);
+                newDevice.getAdvertisementContent().processName(name);
+            }
+            sessions.addSession(newDevice);
+        }
+    }
+
     @SuppressLint("MissingPermission")
     @NonNull
     @Override
@@ -131,19 +148,13 @@ public class BDDeviceListenerImpl extends BleDeviceListener {
                             if (fetchKnownDevices) {
                                 List<BluetoothDevice> devices =
                                         btManager.getDevicesMatchingConnectionStates(BluetoothProfile.GATT,
-                                                new int[]{BluetoothProfile.STATE_CONNECTED | BluetoothProfile.STATE_CONNECTING});
+                                                new int[]{BluetoothProfile.STATE_CONNECTED, BluetoothProfile.STATE_CONNECTING});
                                 for (BluetoothDevice device : devices) {
-                                    if (device.getType() == BluetoothDevice.DEVICE_TYPE_LE && sessions.getSession(device) == null) {
-                                        BDDeviceSessionImpl newDevice = new BDDeviceSessionImpl(context, device, scanCallback, bondingManager, factory);
-                                        sessions.addSession(newDevice);
-                                    }
+                                    addKnownDeviceSession(device);
                                 }
                                 Set<BluetoothDevice> bondedDevices = bluetoothAdapter.getBondedDevices();
                                 for (BluetoothDevice device : bondedDevices) {
-                                    if (device.getType() == BluetoothDevice.DEVICE_TYPE_LE && sessions.getSession(device) == null) {
-                                        BDDeviceSessionImpl newDevice = new BDDeviceSessionImpl(context, device, scanCallback, bondingManager, factory);
-                                        sessions.addSession(newDevice);
-                                    }
+                                    addKnownDeviceSession(device);
                                 }
                                 Set<BleDeviceSession> sessionsList = sessions.copyDeviceList();
                                 for (BleDeviceSession deviceSession : sessionsList) {
@@ -370,6 +381,12 @@ public class BDDeviceListenerImpl extends BleDeviceListener {
         @Override
         public boolean isPowered() {
             return bleActive();
+        }
+
+        @SuppressLint("MissingPermission")
+        @Override
+        public boolean isConnectedAtOsLevel(BDDeviceSessionImpl session) {
+            return btManager.getConnectionState(session.getBluetoothDevice(), BluetoothProfile.GATT) == BluetoothProfile.STATE_CONNECTED;
         }
     };
 
